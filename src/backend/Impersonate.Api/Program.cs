@@ -1,25 +1,21 @@
 using Impersonate.Application;
+using Impersonate.Application.Projects;
+using Impersonate.Domain.Projects;
 using Impersonate.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddHealthChecks();
-builder.Services.AddOpenApi();
-
+builder.Services.AddApplication(); builder.Services.AddInfrastructure(builder.Configuration); builder.Services.AddHealthChecks(); builder.Services.AddOpenApi();
 var app = builder.Build();
-
 app.Logger.LogInformation("Starting Impersonate API");
-
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-
-app.MapGet("/", () => Results.Ok(new { Name = "Impersonate API", Status = "Running" }));
-app.MapHealthChecks("/health");
-
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
+app.MapGet("/", () => Results.Ok(new { Name = "Impersonate API", Status = "Running" })); app.MapHealthChecks("/health");
+var projects = app.MapGroup("/api/projects");
+projects.MapGet("", async (IProjectService service, ProjectStatus? status, string? search, CancellationToken ct) => Results.Ok(await service.ListAsync(status, search, ct)));
+projects.MapGet("/{projectId:guid}", async (Guid projectId, IProjectService service, CancellationToken ct) => (await service.GetAsync(projectId, ct)) is { } project ? Results.Ok(project) : Results.NotFound());
+projects.MapPost("", async (CreateProjectRequest request, IProjectService service, CancellationToken ct) => { try { var project = await service.CreateAsync(request, ct); return (IResult)Results.Created($"/api/projects/{project.Id}", project); } catch (ArgumentException ex) { return (IResult)Results.ValidationProblem(new Dictionary<string, string[]> { [ex.ParamName ?? "request"] = [ex.Message] }); } });
+projects.MapPut("/{projectId:guid}", async (Guid projectId, UpdateProjectRequest request, IProjectService service, CancellationToken ct) => { try { return (IResult)((await service.UpdateAsync(projectId, request, ct)) is { } project ? Results.Ok(project) : Results.NotFound()); } catch (ArgumentException ex) { return (IResult)Results.ValidationProblem(new Dictionary<string, string[]> { [ex.ParamName ?? "request"] = [ex.Message] }); } });
+projects.MapPatch("/{projectId:guid}/status", async (Guid projectId, ChangeStatusRequest request, IProjectService service, CancellationToken ct) => { try { return (IResult)((await service.ChangeStatusAsync(projectId, request.Status, ct)) is { } project ? Results.Ok(project) : Results.NotFound()); } catch (ArgumentOutOfRangeException ex) { return Results.ValidationProblem(new Dictionary<string, string[]> { [ex.ParamName ?? "status"] = [ex.Message] }); } });
+projects.MapGet("/{projectId:guid}/health", async (Guid projectId, IProjectService service, CancellationToken ct) => (await service.GetHealthAsync(projectId, ct)) is { } summary ? Results.Ok(summary) : Results.NotFound());
 app.Run();
-
+public sealed record ChangeStatusRequest(ProjectStatus Status);
 public partial class Program;

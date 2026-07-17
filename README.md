@@ -4,7 +4,7 @@ Impersonate is the future home for a project-aware, personality-guided, multi-ag
 
 ## Current milestone
 
-Bootstrap a modular-monolith repository with Clean Architecture backend boundaries, a worker host, and a React application shell. The next planned milestone is **Project and workspace foundation**.
+Bootstrap a modular-monolith repository with Clean Architecture backend boundaries, a worker host, and a React application shell. This milestone delivers **project-scoped workspaces**. The next planned milestone is **Pipeline and loop domain foundation**.
 
 ## Technology stack
 
@@ -30,7 +30,7 @@ See [solution architecture](docs/architecture/solution-architecture.md) for boun
 
 - .NET SDK 10.x
 - Node.js 22+ and npm
-- SQL Server only when a future feature actually needs persistence; the current API does not access the database.
+- SQL Server for project persistence.
 
 ## Local development
 
@@ -62,6 +62,18 @@ npm run lint
 npm run build
 ```
 
+## Project workspaces
+
+Projects have `Active`, `Idle`, and `Off` states. These states are persisted and displayed only; they do not yet control workers. API endpoints: `GET/POST /api/projects`, `GET/PUT /api/projects/{projectId}`, `PATCH /api/projects/{projectId}/status`, and `GET /api/projects/{projectId}/health`. Frontend routes include `/projects`, `/projects/new`, and dashboard, settings, and health routes beneath `/projects/:projectId`.
+
+Apply the migration manually; startup never migrates the database:
+
+```bash
+dotnet ef database update --project src/backend/Impersonate.Infrastructure --startup-project src/backend/Impersonate.Api
+```
+
+Configuration health checks only stored repository and branch configuration; they do not access GitHub. See [project workspaces](docs/product/project-workspaces.md).
+
 ## Current non-goals
 
-There are no project entities, active-project selection, personalities, agents, orchestration, model routing, GitHub integration, authentication, sessions, background schedules, or deployment configuration in this milestone. EF Core has a configured empty context but no migrations or schema.
+Agents, sessions, pipelines, personalities, model routing, GitHub integration, authentication, schedules, and real repository health checks remain intentionally deferred.
