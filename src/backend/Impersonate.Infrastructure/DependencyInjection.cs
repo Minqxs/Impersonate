@@ -1,4 +1,5 @@
 using Impersonate.Infrastructure.Persistence;
+using Impersonate.Application.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,7 @@ public static class DependencyInjection
         if (!string.IsNullOrWhiteSpace(connectionString))
         {
             services.AddDbContext<ImpersonateDbContext>(options => options.UseSqlServer(connectionString));
+            services.AddScoped<IProjectRepository, EfProjectRepository>();
         }
 
         return services;

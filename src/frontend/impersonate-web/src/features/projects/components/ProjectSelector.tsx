@@ -1,0 +1,6 @@
+import { FormControl, InputLabel, MenuItem, Select } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { listProjects } from '../api/projectsApi';
+import { useActiveProject } from '../ActiveProjectContext';
+export function ProjectSelector() { const navigate = useNavigate(); const { activeProjectId, activeProject, setActiveProject } = useActiveProject(); const projects = useQuery({ queryKey: ['projects'], queryFn: () => listProjects() }); return <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel id="project-selector-label">Project</InputLabel><Select labelId="project-selector-label" label="Project" value={activeProjectId ?? ''} displayEmpty onChange={(e) => { const id = e.target.value; if (id === 'all') { navigate('/projects'); return; } setActiveProject(id); navigate(`/projects/${id}/dashboard`); }} renderValue={(id) => !id ? 'No project selected' : `${activeProject?.name ?? 'Loading…'}${activeProject ? ` · ${activeProject.status}` : ''}` }><MenuItem value="all">All projects</MenuItem>{projects.data?.map((project) => <MenuItem key={project.id} value={project.id}>{project.name} · {project.status}</MenuItem>)}</Select></FormControl>; }

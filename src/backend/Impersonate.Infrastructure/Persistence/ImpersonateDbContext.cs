@@ -1,6 +1,10 @@
+using Impersonate.Domain.Projects;
 using Microsoft.EntityFrameworkCore;
 
 namespace Impersonate.Infrastructure.Persistence;
 
-/// <summary>Database context for persistence introduced by future application modules.</summary>
-public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> options) : DbContext(options);
+public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> options) : DbContext(options)
+{
+    public DbSet<Project> Projects => Set<Project>();
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ImpersonateDbContext).Assembly);
+}

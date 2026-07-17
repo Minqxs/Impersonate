@@ -25,3 +25,9 @@ npm run build
 ## Delivery
 - Use one branch per scoped milestone, clear commit messages, and draft pull requests.
 - Do not merge automatically.
+
+## Project scoping
+- All future project-owned data must include an explicit `ProjectId` and project-scoped API operations must carry it explicitly.
+- Never create a mutable global active project in the backend; frontend query keys for scoped server state include the project ID and switches must not show stale data.
+- Project status is not deletion: Off projects retain configuration and history.
+- Do not place project-specific behaviour in global personality configuration or leak repository/session context across projects.
