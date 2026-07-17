@@ -45,7 +45,7 @@ dotnet run --project src/backend/Impersonate.Worker
 
 # Frontend
 cd src/frontend/impersonate-web
-npm ci
+npm install
 npm run dev
 ```
 
@@ -57,7 +57,7 @@ dotnet build Impersonate.sln --no-restore
 dotnet test Impersonate.sln --no-build
 
 cd src/frontend/impersonate-web
-npm ci
+npm install
 npm run lint
 npm run build
 ```

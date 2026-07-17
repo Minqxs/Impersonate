@@ -17,7 +17,7 @@ dotnet restore Impersonate.sln
 dotnet build Impersonate.sln --no-restore
 dotnet test Impersonate.sln --no-build
 cd src/frontend/impersonate-web
-npm ci
+npm install
 npm run lint
 npm run build
 ```
