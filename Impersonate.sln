@@ -1,0 +1,44 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Domain", "src\\backend\\Impersonate.Domain\\Impersonate.Domain.csproj", "{DCA1B54D-803B-4E1C-B5C7-8C2D226F8601}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Application", "src\\backend\\Impersonate.Application\\Impersonate.Application.csproj", "{1F2FBA3E-348D-4609-9EB5-26507252DAD7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Infrastructure", "src\\backend\\Impersonate.Infrastructure\\Impersonate.Infrastructure.csproj", "{08D18CE4-A4B7-42F3-8B60-7F8A7CE5D89B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Api", "src\\backend\\Impersonate.Api\\Impersonate.Api.csproj", "{01E676DE-EBD2-48BB-81C7-447DC3D972B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Worker", "src\\backend\\Impersonate.Worker\\Impersonate.Worker.csproj", "{451C6D09-41E6-4BA5-9DF8-1A0CD9828F5E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Domain.Tests", "tests\\Impersonate.Domain.Tests\\Impersonate.Domain.Tests.csproj", "{B465B69A-2DB8-4796-94B7-F1C4DC3B83E7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Application.Tests", "tests\\Impersonate.Application.Tests\\Impersonate.Application.Tests.csproj", "{E3FA4292-31DD-43E5-9E2D-90ACD4EB0259}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.IntegrationTests", "tests\\Impersonate.IntegrationTests\\Impersonate.IntegrationTests.csproj", "{7A3F3836-0405-4DC3-A7AC-AC0BA3E02E20}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DCA1B54D-803B-4E1C-B5C7-8C2D226F8601}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DCA1B54D-803B-4E1C-B5C7-8C2D226F8601}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1F2FBA3E-348D-4609-9EB5-26507252DAD7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1F2FBA3E-348D-4609-9EB5-26507252DAD7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{08D18CE4-A4B7-42F3-8B60-7F8A7CE5D89B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{08D18CE4-A4B7-42F3-8B60-7F8A7CE5D89B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01E676DE-EBD2-48BB-81C7-447DC3D972B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01E676DE-EBD2-48BB-81C7-447DC3D972B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{451C6D09-41E6-4BA5-9DF8-1A0CD9828F5E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{451C6D09-41E6-4BA5-9DF8-1A0CD9828F5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B465B69A-2DB8-4796-94B7-F1C4DC3B83E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B465B69A-2DB8-4796-94B7-F1C4DC3B83E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3FA4292-31DD-43E5-9E2D-90ACD4EB0259}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3FA4292-31DD-43E5-9E2D-90ACD4EB0259}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A3F3836-0405-4DC3-A7AC-AC0BA3E02E20}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A3F3836-0405-4DC3-A7AC-AC0BA3E02E20}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+EndGlobal
