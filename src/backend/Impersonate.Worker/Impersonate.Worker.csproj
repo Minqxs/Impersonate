@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <ItemGroup>
+    <ProjectReference Include="../Impersonate.Application/Impersonate.Application.csproj" />
+    <ProjectReference Include="../Impersonate.Infrastructure/Impersonate.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
