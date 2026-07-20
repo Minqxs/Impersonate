@@ -1,4 +1,5 @@
 using Impersonate.Domain.Projects;
+using Xunit;
 
 namespace Impersonate.Domain.Tests;
 

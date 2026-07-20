@@ -1,5 +1,6 @@
 using Impersonate.Application;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit;
 
 namespace Impersonate.Application.Tests;
 

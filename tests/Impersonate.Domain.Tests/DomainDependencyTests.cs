@@ -1,5 +1,6 @@
 using System.Reflection;
 using Impersonate.Domain;
+using Xunit;
 
 namespace Impersonate.Domain.Tests;
 
