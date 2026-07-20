@@ -12,7 +12,9 @@ Expected completed milestones:
 
 Next milestone:
 
-- [ ] Milestone 4: Planner agent integration
+- [x] Milestone 4: Planner agent integration
+
+Next milestone: coder and reviewer revision loop.
 
 The checkboxes above represent the expected plan. A new session must verify the actual repository before relying on them.
 

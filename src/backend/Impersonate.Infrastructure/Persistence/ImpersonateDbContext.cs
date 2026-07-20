@@ -8,5 +8,6 @@ public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> 
 {
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<PipelineRun> PipelineRuns => Set<PipelineRun>();
+    public DbSet<PlanningAttempt> PlanningAttempts => Set<PlanningAttempt>();
     protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ImpersonateDbContext).Assembly);
 }

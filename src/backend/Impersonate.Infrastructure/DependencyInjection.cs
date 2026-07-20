@@ -1,6 +1,8 @@
 using Impersonate.Infrastructure.Persistence;
 using Impersonate.Application.Projects;
 using Impersonate.Application.Pipelines;
+using Impersonate.Application.Planning;
+using Impersonate.Infrastructure.Agents.Planner;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +23,9 @@ public static class DependencyInjection
             services.AddScoped<IProjectRepository, EfProjectRepository>();
             services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
         }
+
+        services.AddHttpClient<ILanguageModelClient, AnthropicLanguageModelClient>((provider,client)=>{var options=provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PlannerOptions>>().Value;client.BaseAddress=new Uri("https://api.anthropic.com/");client.Timeout=TimeSpan.FromSeconds(options.TimeoutSeconds);var key=configuration["ANTHROPIC_API_KEY"]??configuration["Anthropic:ApiKey"];if(!string.IsNullOrWhiteSpace(key))client.DefaultRequestHeaders.Add("x-api-key",key);});
+        services.AddScoped<IPlannerAgent, PlannerAgent>();
 
         return services;
     }
