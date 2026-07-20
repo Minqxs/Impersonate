@@ -8,5 +8,6 @@ coverage/
 .env.local
 .vs/
 .idea/
+.dotnet-home/
 *.user
 *.suo
