@@ -148,9 +148,9 @@ v0.1.0-core-pipeline
 
 ## Current expected position
 
-Milestones 1–3 are expected complete.
+Milestones 1–4 are complete. Planner completion added safe configuration readiness, structured failures, visible attempt history, and manual live-provider acceptance instructions.
 
-Milestone 4 is next.
+Milestone 5, the coder and reviewer revision loop, is next.
 
 The repository must be inspected before this expected state is accepted as fact.
 

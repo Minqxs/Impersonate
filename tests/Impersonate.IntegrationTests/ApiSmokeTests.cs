@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Impersonate.IntegrationTests;
@@ -79,6 +80,32 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal("http://localhost:5173", response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+    }
+
+    [Fact]
+    public async Task PlannerReadiness_DoesNotExposeCredentials_AndStartReturnsStructuredUnavailable()
+    {
+        using var readiness = await client.GetAsync("/api/planner/readiness");
+        var readinessJson = await readiness.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, readiness.StatusCode);
+        Assert.Contains("Incomplete", readinessJson);
+        Assert.DoesNotContain("api-key", readinessJson, StringComparison.OrdinalIgnoreCase);
+
+        using var start = await client.PostAsync($"/api/projects/{Guid.NewGuid()}/pipeline-runs/{Guid.NewGuid()}/planning/start", null);
+        var error = await start.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, start.StatusCode);
+        Assert.Contains("planner_configuration_unavailable", error);
+        Assert.Contains("Planner model is not configured", error);
+    }
+
+    [Fact]
+    public async Task PlannerReadiness_IsReadyWhenAllSafeConfigurationIsPresent()
+    {
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Agents:Planner:Provider"] = "Anthropic", ["Agents:Planner:Model"] = "configured-test-model", ["ANTHROPIC_API_KEY"] = "not-returned-test-secret" })));
+        using var configuredClient = factory.CreateClient();
+        var json = await configuredClient.GetStringAsync("/api/planner/readiness");
+        Assert.Contains("Ready", json);
+        Assert.DoesNotContain("not-returned-test-secret", json);
     }
 }
 
