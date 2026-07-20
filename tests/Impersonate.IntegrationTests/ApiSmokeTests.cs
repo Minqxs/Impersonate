@@ -55,6 +55,16 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
     }
+
+    [Fact]
+    public async Task Development_ExposesSwaggerUiAndOpenApiDocument()
+    {
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        using var developmentClient = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await developmentClient.GetAsync("/swagger/index.html")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await developmentClient.GetAsync("/openapi/v1.json")).StatusCode);
+    }
 }
 
 public sealed class ProjectApiFactory : WebApplicationFactory<Program>

@@ -49,6 +49,8 @@ npm install
 npm run dev
 ```
 
+In Development, interactive API documentation is available at `https://localhost:7001/swagger`; its OpenAPI document is served from `/openapi/v1.json`.
+
 ## Validation
 
 ```bash
