@@ -50,6 +50,7 @@ npm run dev
 ```
 
 In Development, interactive API documentation is available at `https://localhost:7001/swagger`; its OpenAPI document is served from `/openapi/v1.json`.
+The API also permits browser requests from the default Vite development origin, `http://localhost:5173`. Other origins remain blocked unless explicitly configured in a future deployment policy.
 
 ## Validation
 

@@ -65,6 +65,21 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
         Assert.Equal(HttpStatusCode.OK, (await developmentClient.GetAsync("/swagger/index.html")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await developmentClient.GetAsync("/openapi/v1.json")).StatusCode);
     }
+
+    [Fact]
+    public async Task Development_AllowsViteOriginCorsPreflight()
+    {
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        using var developmentClient = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/projects");
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        using var response = await developmentClient.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("http://localhost:5173", response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+    }
 }
 
 public sealed class ProjectApiFactory : WebApplicationFactory<Program>

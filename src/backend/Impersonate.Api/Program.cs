@@ -12,10 +12,15 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHealthChecks();
 builder.Services.AddOpenApi();
+builder.Services.AddCors(options => options.AddPolicy("FrontendDevelopment", policy =>
+    policy.WithOrigins("http://localhost:5173")
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
 var app = builder.Build();
 app.Logger.LogInformation("Starting Impersonate API");
 if (app.Environment.IsDevelopment())
 {
+    app.UseCors("FrontendDevelopment");
     app.MapOpenApi();
     app.UseSwaggerUI(options =>
     {
