@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/engineering-personality/rule.schema.json",
+  "title": "Engineering Personality Rule",
+  "type": "object",
+  "required": [
+    "id",
+    "statement",
+    "rationale",
+    "strength",
+    "scope",
+    "confidence",
+    "maturity",
+    "first_observed",
+    "last_confirmed",
+    "evidence_count",
+    "evidence_refs",
+    "exceptions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 10
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 5
+    },
+    "strength": {
+      "enum": [
+        "required",
+        "preferred",
+        "discretionary"
+      ]
+    },
+    "scope": {
+      "enum": [
+        "global",
+        "technology-specific",
+        "role-specific",
+        "new-project-only",
+        "existing-project-only",
+        "temporary",
+        "unknown-needs-review"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "maturity": {
+      "enum": [
+        "experimental",
+        "preferred",
+        "established",
+        "under-review",
+        "deprecated",
+        "superseded"
+      ]
+    },
+    "first_observed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_confirmed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^E[0-9]{3}$"
+      },
+      "uniqueItems": true
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

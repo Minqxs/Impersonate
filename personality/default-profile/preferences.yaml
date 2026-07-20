@@ -1,0 +1,160 @@
+preferences:
+- id: existing-repository-conventions-win
+  statement: In existing projects, follow the established framework, libraries, architecture, component system,
+    test conventions, and local helper APIs unless evidence justifies deviation.
+  rationale: Consistency inside a repository generally matters more than a global preference.
+  strength: required
+  scope: existing-project-only
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 3
+  evidence_refs:
+  - E002
+  - E006
+  - E009
+  exceptions: []
+- id: prefer-maintained-trusted-dependencies
+  statement: Prefer mature, actively maintained, compatible, and trusted dependencies over novelty or popularity
+    alone.
+  rationale: Reduces avoidable maintenance and security risk.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E012
+  - E013
+  exceptions: []
+- id: preferred-backend-dotnet
+  statement: Prefer C# and modern .NET for new backend and service work unless the product, team, ecosystem, or
+    deployment constraints justify another stack.
+  rationale: Matches durable experience and current working preference without overriding project fit.
+  strength: preferred
+  scope: new-project-only
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E010
+  - E012
+  exceptions: []
+- id: preferred-frontend-react-typescript
+  statement: Prefer React with TypeScript for new frontend applications unless project needs justify another framework.
+  rationale: Matches repeated usage and current preference.
+  strength: preferred
+  scope: new-project-only
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 3
+  evidence_refs:
+  - E005
+  - E010
+  - E012
+  exceptions: []
+- id: prefer-react-spa-when-next-adds-little
+  statement: Prefer a React SPA over Next.js when server rendering, server components, routing conventions, or other
+    Next.js-specific capabilities do not provide enough value for the product.
+  rationale: Select framework complexity based on actual needs.
+  strength: preferred
+  scope: technology-specific
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 1
+  evidence_refs:
+  - E012
+  exceptions: []
+- id: angular-not-default-for-new-work
+  statement: Do not select Angular as the default for new personal projects unless explicitly required; fully respect
+    Angular in repositories that already use it.
+  rationale: Captures current preference without creating a hostile migration rule.
+  strength: preferred
+  scope: new-project-only
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 1
+  evidence_refs:
+  - E012
+  exceptions: []
+- id: verification-scales-with-risk-and-policy
+  statement: Use the verification required by the active task, repository, and pipeline; broaden checks when changes
+    affect shared behaviour, contracts, security, or workflow correctness.
+  rationale: Avoids both ritual testing and unjustified confidence.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E007
+  - E011
+  exceptions: []
+- id: plan-when-broad-or-risky
+  statement: Provide a concise implementation plan when work is cross-cutting, high-risk, ambiguous, or explicitly
+    requests planning; otherwise inspect and proceed proactively.
+  rationale: Planning should reduce risk rather than become ceremony.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E004
+  - E010
+  exceptions: []
+- id: purposeful-product-usability
+  statement: Prefer clear navigation, coherent information architecture, role-appropriate workflows, accessible
+    feedback, and purposeful visual polish that makes software feel complete without decorative complexity.
+  rationale: Usability and product completeness are recurring priorities, while visual themes remain project-specific.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E005
+  - E013
+  exceptions: []
+- id: evidence-based-work-reporting
+  statement: When reporting work, use actual commits, diffs, changed files, review outcomes, verification status,
+    and available session context, while naming unavailable evidence.
+  rationale: Reports should represent what happened rather than what was intended.
+  strength: required
+  scope: role-specific
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E006
+  - E007
+  exceptions: []
+superseded_preferences:
+- id: no-global-technology-preferences
+  statement: Earlier extraction avoided all global technology preferences.
+  superseded_by:
+  - preferred-backend-dotnet
+  - preferred-frontend-react-typescript
+  - prefer-react-spa-when-next-adds-little
+  - angular-not-default-for-new-work
+  reason: Later review distinguished scoped new-project preferences from universal repository rules.
+  date_superseded: '2026-07-16'

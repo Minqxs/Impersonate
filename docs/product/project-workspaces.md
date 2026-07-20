@@ -1,40 +1,98 @@
-# Project workspaces
+# Project-Scoped Workspaces
 
-Projects are the primary isolation boundary for repositories and all future sessions, runs, agents, context, memory, and health data. The current frontend stores only the last selected project ID as a convenience and verifies it through the API; it never treats local storage as authoritative.
+## Goal
 
-## User experience
+Impersonate must avoid mixing sessions and context from unrelated repositories.
 
-Users begin at the projects overview, create or select a project, and enter routes beneath `/projects/:projectId`. The application header reflects the verified active project. Dashboard, settings, and configuration-health requests use the route project ID, and an invalid stored or routed ID is cleared or redirected to the overview.
+The user selects an active project. The application then scopes relevant views and operations to that project.
 
-The frontend may remember a selection. The backend remains stateless: every scoped operation receives the project ID explicitly and never infers it from another request.
+## Project-owned information
 
-Backend operations are stateless and receive a project ID in their route or request. Future project-owned tables must have `ProjectId`, and application use cases must validate that scope before reading or mutating data. Frontend query keys include the project ID to prevent a project switch from displaying prior-project state.
+A project owns:
 
-## States
+- repository configuration;
+- project context;
+- sessions;
+- pipeline runs;
+- planned tasks;
+- loop runs;
+- tool activity;
+- project memory;
+- health checks;
+- model policy;
+- personality assignment or project overlay;
+- approvals;
+- generated branches and pull requests.
 
-| Status | User access | Manual runs later | Scheduled work later |
-| --- | --- | --- | --- |
-| Active | Full | Allowed | Allowed |
-| Idle | Full | Allowed | Reduced or paused |
-| Off | Read-only history/configuration | Blocked | Blocked |
+## Project states
 
-Only persistence and display exist now. Configuration health confirms required stored fields, not GitHub reachability. Repository URLs are limited to practical GitHub HTTPS URLs and are not contacted.
+```text
+Active
+Idle
+Off
+```
 
-Accepted repository metadata uses `https://github.com/{owner}/{repository}` with an optional `.git` suffix. Query strings, fragments, nested GitHub pages, non-HTTPS URLs, and non-GitHub hosts are rejected. Accessibility, authentication, and repository existence are deliberately not checked.
+### Active
 
-## Isolation rules
+Normal manual and future scheduled work is permitted.
 
-- Future project-owned tables and records include `ProjectId`.
-- Backend routes and application inputs carry scope explicitly; no global active-project service is permitted.
-- Repository queries must constrain reads and writes to the supplied project.
-- Frontend server-state query keys include the project ID.
-- A project switch must not render cached data under a different project identity.
-- `Off` retains configuration and history and is not deletion.
+### Idle
 
-## Non-goals
+Project data remains available. Manual work is permitted, while future background activity is reduced or paused.
 
-This milestone does not implement sessions, agents, pipelines, personalities, model routing, repository cloning, GitHub access, authentication, or worker resource controls.
+### Off
 
-## Next milestone
+Configuration and history remain visible. Future automation and manual agent execution are blocked unless the project is activated again.
 
-Pipeline and loop domain foundation.
+Off is not deletion.
+
+## Backend rule
+
+The backend must not maintain a mutable global active-project value.
+
+Every project-owned operation receives the project ID explicitly through route, command, query, or request context.
+
+## Frontend rule
+
+The frontend may remember the last selected project ID for convenience.
+
+The ID must be verified against the API on startup. The complete project object is not stored as truth in local storage.
+
+Project IDs must appear in server-state query keys.
+
+## Cross-project isolation
+
+Selecting Project B must never show Project A's:
+
+- sessions;
+- runs;
+- memory;
+- tasks;
+- loop state;
+- health;
+- repository output;
+- approval state.
+
+Promotion from project context into the global personality requires an explicit personality-amendment process.
+
+## All-projects operations view
+
+The application eventually provides an all-projects view showing:
+
+- operational state;
+- health;
+- active loops;
+- pending approvals;
+- resource usage;
+- recent failures;
+- maintenance recommendations.
+
+This view observes all projects but does not merge their working context.
+
+## Current implementation baseline
+
+Users begin at the projects overview, create or select a project, and enter routes beneath `/projects/:projectId`. The application header reflects the API-verified active project. Dashboard, settings, and configuration-health requests use the route project ID; invalid stored or routed IDs are cleared or redirected to the overview.
+
+Only persistence and display of project state are currently expected. Configuration health confirms required stored fields, not GitHub reachability. Repository URLs are limited to practical GitHub HTTPS URLs and are not contacted. URLs may use `https://github.com/{owner}/{repository}` with an optional `.git` suffix; query strings, fragments, nested GitHub pages, non-HTTPS URLs, and non-GitHub hosts are rejected.
+
+The project-workspace milestone did not itself implement sessions, agents, pipelines, personalities, model routing, repository cloning, GitHub access, authentication, or worker resource controls. Later milestones may add these only with the same explicit project isolation.

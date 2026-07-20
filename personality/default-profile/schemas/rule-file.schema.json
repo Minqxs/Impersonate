@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/engineering-personality/rule-file.schema.json",
+  "title": "Engineering Personality Rule Collection",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "principles": {
+      "type": "array",
+      "items": {
+        "$ref": "rule.schema.json"
+      },
+      "uniqueItems": true
+    },
+    "risk_posture": {
+      "type": "array",
+      "items": {
+        "$ref": "rule.schema.json"
+      },
+      "uniqueItems": true
+    },
+    "preferences": {
+      "type": "array",
+      "items": {
+        "$ref": "rule.schema.json"
+      },
+      "uniqueItems": true
+    },
+    "decision_heuristics": {
+      "type": "array",
+      "items": {
+        "$ref": "rule.schema.json"
+      },
+      "uniqueItems": true
+    },
+    "superseded_preferences": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}
