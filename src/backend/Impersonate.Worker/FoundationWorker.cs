@@ -5,11 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Impersonate.Worker;
-public sealed class FoundationWorker(IServiceScopeFactory scopes,IOptions<PlannerOptions> options,ILogger<FoundationWorker> logger):BackgroundService
+public sealed class FoundationWorker(IServiceScopeFactory scopes,IOptions<PlannerOptions> options,IPlannerReadiness readiness,ILogger<FoundationWorker> logger):BackgroundService
 {
  protected override async Task ExecuteAsync(CancellationToken stoppingToken)
  {
-  logger.LogInformation("Planner worker started.");
+  var plannerReadiness=readiness.Get();
+  if(!plannerReadiness.IsReady){logger.LogWarning("Planner worker is idle: {PlannerReadinessMessage}",plannerReadiness.Message);return;}
+  logger.LogInformation("Planner worker started with provider {Provider} and model {Model}.",options.Value.Provider,options.Value.Model);
   using var timer=new PeriodicTimer(TimeSpan.FromSeconds(options.Value.PollIntervalSeconds));
   do { try{await ProcessOneAsync(stoppingToken);}catch(OperationCanceledException) when(stoppingToken.IsCancellationRequested){}catch(Exception ex){logger.LogError(ex,"Planner polling cycle failed.");} } while(await timer.WaitForNextTickAsync(stoppingToken));
  }
@@ -19,7 +21,7 @@ public sealed class FoundationWorker(IServiceScopeFactory scopes,IOptions<Planne
   await using var claimTx=await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable,ct);
   var run=await db.PipelineRuns.Include(x=>x.LoopRun).Include(x=>x.Tasks).Include(x=>x.Events).Where(x=>x.Status==PipelineRunStatus.Planning&&(x.PlanningClaimExpiresAtUtc==null||x.PlanningClaimExpiresAtUtc<now)).OrderBy(x=>x.CreatedAtUtc).FirstOrDefaultAsync(ct);
   if(run is null){await claimTx.RollbackAsync(ct);return;}
-  var claim=Guid.NewGuid();run.ClaimPlanning(claim,Environment.MachineName,now.AddMinutes(5),now);await db.SaveChangesAsync(ct);await claimTx.CommitAsync(ct);
+  var claim=Guid.NewGuid();var lease=TimeSpan.FromSeconds((options.Value.TimeoutSeconds+30)*options.Value.MaximumPlanningAttempts);run.ClaimPlanning(claim,Environment.MachineName,now.Add(lease),now);await db.SaveChangesAsync(ct);await claimTx.CommitAsync(ct);
   var project=await db.Projects.SingleAsync(x=>x.Id==run.ProjectId,ct);var prior=await db.PlanningAttempts.CountAsync(x=>x.PipelineRunId==run.Id,ct);string? correction=null;
   for(var number=prior+1;number<=options.Value.MaximumPlanningAttempts;number++)
   {
@@ -33,7 +35,7 @@ public sealed class FoundationWorker(IServiceScopeFactory scopes,IOptions<Planne
     attempt.Succeed(result.ProviderRequestId,result.InputTokenCount,result.OutputTokenCount);await db.SaveChangesAsync(ct);await successTx.CommitAsync(ct);logger.LogInformation("Planning completed for project {ProjectId}, pipeline {PipelineId}, attempt {Attempt}.",project.Id,run.Id,number);return;
    }
    catch(OperationCanceledException) when(ct.IsCancellationRequested){attempt.Fail(PlanningAttemptStatus.Cancelled,"cancelled","Planning was cancelled.");await db.SaveChangesAsync(CancellationToken.None);throw;}
-   catch(Exception ex){attempt.Fail(ex is TaskCanceledException?PlanningAttemptStatus.TimedOut:PlanningAttemptStatus.ProviderFailed,"provider_failed","The configured planner provider failed.");await db.SaveChangesAsync(ct);logger.LogWarning(ex,"Planning attempt {Attempt} failed for pipeline {PipelineId}.",number,run.Id);}
+   catch(Exception ex){var timedOut=ex is TaskCanceledException;attempt.Fail(timedOut?PlanningAttemptStatus.TimedOut:PlanningAttemptStatus.ProviderFailed,timedOut?"provider_timeout":"provider_failed",timedOut?"The configured planner provider timed out.":"The configured planner provider failed.");await db.SaveChangesAsync(ct);logger.LogWarning("Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId} ({FailureType}).",number,project.Id,run.Id,ex.GetType().Name);}
   }
   run.Fail("Planning attempts were exhausted.");run.ClearPlanningClaim();await db.SaveChangesAsync(ct);
  }
