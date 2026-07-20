@@ -65,7 +65,14 @@ public sealed class Project
     private static string ValidateRepositoryUrl(string value)
     {
         var normalized = Required(value, nameof(value), RepositoryUrlMaxLength);
-        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) || uri.Segments.Length < 3)
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps ||
+            !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Segments.Length != 3 ||
+            string.IsNullOrWhiteSpace(uri.Segments[1].Trim('/')) ||
+            string.IsNullOrWhiteSpace(uri.Segments[2].Trim('/')) ||
+            !string.IsNullOrEmpty(uri.Query) ||
+            !string.IsNullOrEmpty(uri.Fragment))
             throw new ArgumentException("Repository URL must be a GitHub HTTPS repository URL.", nameof(value));
         return normalized;
     }

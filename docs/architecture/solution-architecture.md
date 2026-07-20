@@ -8,9 +8,9 @@ Impersonate is a modular monolith with explicit Clean Architecture dependencies:
 Domain ← Application ← Infrastructure ← API / Worker
 ```
 
-- **Domain** is intentionally empty of feature concepts at this milestone and has no framework references.
-- **Application** is the future home of use-case contracts and exposes only its DI registration boundary today.
-- **Infrastructure** contains the EF Core SQL Server context and configuration-based registration. It contains no invented tables or migrations.
+- **Domain** contains the framework-independent `Project` aggregate and its invariants.
+- **Application** contains project request/response contracts, repository ports, and project management use cases without adding CQRS infrastructure.
+- **Infrastructure** contains the EF Core SQL Server context, explicit project mapping, repository adapter, and migrations.
 - **API** provides metadata, health, OpenAPI in development, and composition-root concerns.
 - **Worker** uses the same Application and Infrastructure composition modules, reports lifecycle events, and has no schedule or job loop.
 
@@ -26,8 +26,8 @@ The Vite application uses `app/` for router, providers, and MUI theme; `layouts/
 
 - The ASP.NET Core API exposes `GET /` and `GET /health`.
 - The worker starts and stops cleanly without executing product work.
-- The frontend renders a responsive-ready application shell, placeholder routes, project/personality placeholders, and a system indicator.
+- The frontend renders project selection, overview, creation, dashboard, settings, and configuration-health routes.
 
 ## Deferred intentionally
 
-Product modules, project workspaces, engineering personalities, agents, delivery loops, model routing, GitHub delivery, authentication, persistent domain tables, and operational views remain future work.
+Engineering personalities, agents, delivery loops, model routing, GitHub delivery, authentication, and real repository-health inspection remain future work.
