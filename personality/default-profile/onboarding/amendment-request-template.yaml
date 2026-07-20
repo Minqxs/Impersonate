@@ -1,0 +1,17 @@
+amendment_request:
+  natural_language_input: ''
+  source: user
+  classification: ''
+  scope: []
+  affected_rules: []
+  affected_roles: []
+  current_position: ''
+  proposed_position: ''
+  reason: ''
+  supporting_evidence: []
+  conflicts: []
+  migration_or_compatibility_notes: ''
+  confidence: medium
+  personality_critic_result: ''
+  approval_required: true
+  status: proposed

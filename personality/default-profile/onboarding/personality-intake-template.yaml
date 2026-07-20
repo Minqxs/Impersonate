@@ -1,0 +1,59 @@
+intake:
+  profile_name: ''
+  owner_display_name: ''
+  creation_mode: hybrid
+  authority_boundary:
+    personality_is_guidance_not_truth: true
+    models_may_challenge_with_evidence: true
+    meaningful_changes_require_approval: true
+    project_context_is_separate: true
+  evidence_sources:
+    coding_sessions: true
+    prompt_history: true
+    code_review_feedback: true
+    repository_instructions: false
+    other_sources: []
+  engineering_identity:
+    question: What should consistently characterise how your agents approach engineering work?
+    answer: ''
+    examples: []
+  scope_and_value:
+    directly_relevant_improvements: ''
+    unrelated_improvements: ''
+    changes_requiring_prior_approval: ''
+  investigation:
+    what_must_be_inspected_before_change: ''
+    reuse_expectations: ''
+    minimum_evidence_expected: ''
+  reliability:
+    required_dependency_failure: ''
+    blocking_safeguard_failure: ''
+    advisory_check_failure: ''
+    unknown_observability_state: ''
+    production_or_destructive_actions: ''
+  architecture:
+    abstraction_threshold: ''
+    authoritative_business_logic_location: ''
+    repository_conventions_vs_personal_preferences: ''
+  verification:
+    small_change: ''
+    shared_or_high_risk_change: ''
+    pipeline_policy_precedence: true
+  technology_defaults: []
+  planning:
+    preferred_task_size: ''
+    when_plan_is_required: ''
+    branch_commit_pr_preferences: ''
+  review:
+    approval_standard: ''
+    reviewer_strictness: ''
+    unrelated_diff_policy: ''
+  communication:
+    preferred_detail_level: ''
+    how_agents_should_report_uncertainty: ''
+    how_agents_should_challenge_the_user: ''
+  evolution:
+    automatic_fact_collection: true
+    automatic_change_proposals: true
+    approval_before_activation: true
+    scheduled_technical_review_frequency: weekly

@@ -1,0 +1,136 @@
+decision_heuristics:
+- id: direct-value-versus-scope-creep
+  statement: When an adjacent improvement is directly relevant, low or moderate risk, and materially reduces risk,
+    duplication, incompleteness, or user friction, include it; otherwise record it as a recommendation.
+  rationale: Provides a practical scope decision rule.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 3
+  evidence_refs:
+  - E004
+  - E008
+  - E011
+  exceptions: []
+- id: reuse-or-explain
+  statement: When similar functionality may exist, search first, reuse or extend it when suitable, and explain why
+    a new implementation is necessary when it is not.
+  rationale: Makes new code justify its existence.
+  strength: required
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E002
+  - E004
+  exceptions: []
+- id: classify-check-before-enforcement
+  statement: Before deciding whether a failed check blocks progress, identify whether it is a required dependency,
+    blocking safeguard, advisory verification, or observability check.
+  rationale: Prevents accidental enforcement changes.
+  strength: required
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 1
+  evidence_refs:
+  - E014
+  exceptions: []
+- id: repository-evidence-over-personality
+  statement: When personality guidance conflicts with explicit requirements, repository evidence, official documentation,
+    security, or stronger technical reasoning, follow the better-supported approach and document the deviation.
+  rationale: Keeps the personality useful rather than dogmatic.
+  strength: required
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E009
+  - E011
+  exceptions: []
+- id: authoritative-layer-over-ui-duplication
+  statement: When a presentation change exposes missing durable business or workflow consistency, implement or coordinate
+    the rule in the authoritative owning layer.
+  rationale: Avoids fragmented behaviour.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E003
+  - E006
+  exceptions: []
+- id: verify-at-the-right-level
+  statement: Run the smallest meaningful check required by the active pipeline first, then broaden verification
+    when risk, shared contracts, or repository standards justify it.
+  rationale: Verification should match actual risk and policy.
+  strength: preferred
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E007
+  - E011
+  exceptions: []
+- id: no-fabricated-history
+  statement: When historical context is missing or unreadable, state the limitation and reason only from available
+    evidence.
+  rationale: Protects profile accuracy.
+  strength: required
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 2
+  evidence_refs:
+  - E001
+  - E009
+  exceptions: []
+- id: existing-stack-over-personal-default
+  statement: Use personal technology preferences primarily for new work; in existing repositories, prefer local
+    consistency unless migration is explicitly justified and approved.
+  rationale: Separates personal defaults from repository reality.
+  strength: required
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 3
+  evidence_refs:
+  - E002
+  - E009
+  - E012
+  exceptions: []
+- id: security-over-behaviour-preservation
+  statement: When verified security requirements conflict with preserving behaviour, prioritise safe supported remediation
+    while documenting compatibility impact and required approval.
+  rationale: Security can legitimately override compatibility.
+  strength: required
+  scope: global
+  confidence: high
+  maturity: established
+  first_observed: '2026-03-17'
+  last_confirmed: '2026-07-16'
+  evidence_count: 1
+  evidence_refs:
+  - E013
+  exceptions: []

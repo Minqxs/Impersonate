@@ -1,5 +1,11 @@
 # Impersonate agent guidance
 
+## Product context
+- Read `docs/product/impersonate-product-charter.md` before major product work.
+- Read `docs/development/current-state-after-milestone-3.md`, `docs/development/roadmap.md`, and `PLANS.md` before starting a milestone.
+- Read the relevant architecture document and ADR before modifying a core subsystem.
+- Treat vision and roadmap documents as expected direction, not proof of implemented capability; repository evidence wins.
+
 ## Architecture
 - Respect Clean Architecture dependency direction: Domain ← Application ← Infrastructure ← API/Worker.
 - Keep Domain independent of frameworks and technical concerns.
@@ -38,3 +44,13 @@ npm run build
 - Require reviewer approval before commit and explicit finite retry limits.
 - Preserve attempts and reviews, test cross-project access, and never silently reopen terminal state.
 - Snapshot policy for new runs only; never expose arbitrary transition endpoints or claim model-only state was executed.
+
+## Engineering personality
+- Personality is user-owned, versioned guidance, not the source of truth.
+- Models may deviate when task requirements, repository evidence, security, official documentation, or stronger technical reasoning justify it.
+- Meaningful personality changes require a proposal, review, and human approval.
+- Keep project context separate from the global personality.
+
+## Planning
+- Plan first for complex work and follow `PLANS.md` for milestone execution plans.
+- Review the complete diff and run the repository validation commands before delivery.

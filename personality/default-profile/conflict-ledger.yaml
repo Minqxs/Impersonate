@@ -1,0 +1,49 @@
+conflicts:
+- topic: Strict task scope versus directly valuable adjacent improvements
+  earlier_position: Some task instructions explicitly limited work to one feature or fix.
+  later_position: Directly relevant improvements that reduce meaningful risk or incompleteness are not automatically
+    over-engineering.
+  resolved_current_position: Include low or moderate-risk improvements directly tied to the requested outcome; document
+    unrelated opportunities separately.
+  resolution_reason: The later position clarifies scope judgement rather than removing task boundaries.
+  confidence: high
+- topic: All safety checks block versus checks have different enforcement modes
+  earlier_position: The initial extraction generalised safety and validation failures as blocking.
+  later_position: Some checks are required dependencies, while others are advisory, review-required, or observability-only.
+  resolved_current_position: Classify checks before enforcing them; never claim an unavailable check passed, but
+    block only when its declared mode requires it.
+  resolution_reason: The latest clarification better represents repeated workflow decisions.
+  confidence: high
+- topic: No global technology preferences versus scoped personal defaults
+  earlier_position: The original extraction avoided all global technology preferences to prevent project leakage.
+  later_position: Durable personal defaults exist for new work, while existing repositories should retain their
+    own conventions.
+  resolved_current_position: Store .NET and React/TypeScript as scoped new-project preferences, not universal migration
+    rules.
+  resolution_reason: Scope resolves the apparent conflict.
+  confidence: high
+- topic: Personality authority versus model reasoning
+  earlier_position: Personality rules guide agent behaviour.
+  later_position: The personality is not the source of truth; models and evidence perform most of the work and may
+    improve it.
+  resolved_current_position: Personality is a versioned reasoning prior that yields to stronger evidence and justified
+    model reasoning.
+  resolution_reason: Latest explicit authority-boundary decision.
+  confidence: high
+- topic: Tests as a default review requirement versus active pipeline quality gates
+  earlier_position: The reviewer overlay treated missing tests as a general concern.
+  later_position: Some pipelines intentionally use reviewer approval without automated tests, while real repositories
+    may require tests and builds.
+  resolved_current_position: Review and verification follow the active task, repository, and pipeline policy, scaled
+    by risk.
+  resolution_reason: Pipeline requirements define the current quality gate.
+  confidence: high
+- topic: Global visual style versus global usability principles
+  earlier_position: Repeated projects requested specific themes and visual treatments.
+  later_position: Themes belong to project context, while navigation, information architecture, role fit, and purposeful
+    polish are global preferences.
+  resolved_current_position: Keep visual themes project-specific and retain product usability as the global personality
+    rule.
+  resolution_reason: Separates style from durable product judgement.
+  confidence: high
+unresolved_conflicts: []

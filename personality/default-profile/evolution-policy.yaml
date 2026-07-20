@@ -1,0 +1,65 @@
+evolution_policy:
+  current_version: 0.2.0
+  preserve_previous_versions: true
+  personality_is_user_owned: true
+  personality_is_guidance_not_truth: true
+  amendment_flow:
+  - Receive a natural-language amendment, model deviation pattern, or technical finding.
+  - Classify the change and determine its scope, strength, confidence, and affected roles.
+  - Compare it with current rules, project overlays, and superseded history.
+  - Generate a structured and human-readable diff.
+  - Run personality-critic review.
+  - Request explicit user approval for meaningful changes.
+  - Create a new version and preserve the previous version after approval.
+  automatic_learning:
+    facts_may_be_collected: true
+    evidence_may_be_recorded: true
+    candidate_changes_may_be_proposed: true
+    meaningful_changes_require_approval: true
+    silent_rewrite_allowed: false
+    repeated_justified_deviations_trigger_review: true
+  scheduled_technical_intelligence:
+    default_frequency: weekly
+    scope: active-and-monitored-project-stacks
+    finding_categories:
+    - informational
+    - recommended
+    - breaking
+    - deprecated
+    - security-advisory
+    - critical-security-threat
+    normal_updates: weekly-report
+    high_or_critical_security: immediate-alert
+    personality_update: proposal-only-until-approved
+    repository_change: never-automatic-by-default
+  approval_policy:
+    record_external_fact: automatic
+    create_change_candidate: automatic
+    clarify_wording_without_behaviour_change: user-configurable
+    change_technology_preference: explicit-user-approval
+    change_core_principle: explicit-user-approval
+    change_architecture_preference: explicit-user-approval
+    modify_code_or_dependencies: follow-active-project-pipeline-and-user-permissions
+  natural_language_amendment_example:
+    input: I stopped using Formik for new React work. I now prefer React Hook Form with Zod. Do not migrate existing
+      Formik projects unless substantial form work is already required.
+    expected_result:
+      change_type: technology-preference
+      scope:
+      - new-project-only
+      - existing-project-only-exception
+      affected_roles:
+      - planner
+      - coder
+      - reviewer
+      - technology-scout
+      preserve_old_rule_as: superseded-for-new-projects-valid-for-existing-projects
+      human_diff_required: true
+      approval_required: true
+  deviation_record:
+    personality_rule: ''
+    followed: false
+    chosen_approach: ''
+    justification: ''
+    supporting_evidence: []
+    personality_update_candidate: false
