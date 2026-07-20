@@ -31,3 +31,10 @@ npm run build
 - Never create a mutable global active project in the backend; frontend query keys for scoped server state include the project ID and switches must not show stale data.
 - Project status is not deletion: Off projects retain configuration and history.
 - Do not place project-specific behaviour in global personality configuration or leak repository/session context across projects.
+
+## Pipeline and loop workflow
+- Change workflow state only through domain or application transition methods; controllers never set status directly.
+- Record significant transitions as audit events. Audit events are not event sourcing.
+- Require reviewer approval before commit and explicit finite retry limits.
+- Preserve attempts and reviews, test cross-project access, and never silently reopen terminal state.
+- Snapshot policy for new runs only; never expose arbitrary transition endpoints or claim model-only state was executed.
