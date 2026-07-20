@@ -14,7 +14,15 @@ builder.Services.AddHealthChecks();
 builder.Services.AddOpenApi();
 var app = builder.Build();
 app.Logger.LogInformation("Starting Impersonate API");
-if (app.Environment.IsDevelopment()) app.MapOpenApi();
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "Impersonate API v1");
+        options.RoutePrefix = "swagger";
+    });
+}
 app.MapGet("/", () => Results.Ok(new { Name = "Impersonate API", Status = "Running" }));
 app.MapHealthChecks("/health");
 var projects = app.MapGroup("/api/projects");
