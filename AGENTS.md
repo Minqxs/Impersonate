@@ -66,4 +66,7 @@ npm run build
 - Both API and Worker require matching provider, model, and credential configuration.
 - Never log, persist, or return provider credentials, headers, or sensitive provider payloads.
 - Do not begin coder or reviewer execution while completing the planner milestone.
+- Resolve agent models only through the Application resolver: project override, global default, environment fallback, then unconfigured.
+- Model catalogue records never contain credentials or arbitrary provider endpoints; Anthropic is the only executable adapter until explicitly extended.
+- Assignment changes affect new attempts only; historical provider/model snapshots remain immutable.
 - New sessions read `docs/development/current-state.md`; milestone completion updates it and the roadmap.

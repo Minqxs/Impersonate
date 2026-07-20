@@ -43,6 +43,8 @@ Do not prioritise the visual Brain before there is meaningful agent and loop act
 
 **Complete.** The planner is provider-neutral at the Application boundary, Claude-backed in Infrastructure, validated, persisted, and executed by the database-backed Worker.
 
+The in-app AI model configuration foundation is complete as a scoped Milestone 4 extension. It adds explicit catalogue and assignment semantics only; the automatic model-routing milestone remains future work.
+
 - LLM provider abstraction
 - initial Claude Messages API implementation
 - planner role configuration

@@ -24,7 +24,7 @@ export function RunDetailPage() {
   const { projectId = '', pipelineRunId = '' } = useParams(); const queryClient = useQueryClient();
   const run = useQuery({ queryKey: runKeys.detail(projectId, pipelineRunId), queryFn: () => getRun(projectId, pipelineRunId), refetchInterval: query => query.state.data?.status === 'Planning' ? 3000 : false });
   const timeline = useQuery({ queryKey: runKeys.timeline(projectId, pipelineRunId), queryFn: () => getTimeline(projectId, pipelineRunId), refetchInterval: run.data?.status === 'Planning' ? 3000 : false });
-  const readiness = useQuery({ queryKey: runKeys.readiness(), queryFn: getPlannerReadiness, staleTime: 30000 });
+  const readiness = useQuery({ queryKey: [...runKeys.readiness(),projectId], queryFn:()=>getPlannerReadiness(projectId), staleTime: 30000 });
   const refresh = () => { queryClient.invalidateQueries({ queryKey: runKeys.detail(projectId, pipelineRunId) }); queryClient.invalidateQueries({ queryKey: runKeys.timeline(projectId, pipelineRunId) }); queryClient.invalidateQueries({ queryKey: runKeys.all(projectId) }); };
   const planning = useMutation({ mutationFn: () => startPlanning(projectId, pipelineRunId), onSuccess: refresh });
   const cancel = useMutation({ mutationFn: () => cancelRun(projectId, pipelineRunId), onSuccess: refresh });

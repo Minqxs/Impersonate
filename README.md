@@ -83,7 +83,11 @@ Coder/reviewer agents, repository tools, personality runtime, model routing, Git
 
 ## Planner configuration
 
+The in-app catalogue at `/ai-models` manages safe model definitions and global Planner, Coder, and Reviewer defaults. Projects override them at `/projects/{projectId}/models`. Resolution is project override, global default, then the environment fallback below. Coder and Reviewer assignments are preparatory and do not execute yet.
+
 The API and Worker must both receive the same planner configuration. Do not commit the key or place it in checked-in settings.
+
+Both Development hosts use the same LocalDB connection from their `appsettings.Development.json` files. Non-Development deployments must provide the same `ConnectionStrings__ImpersonateDatabase` value to API and Worker.
 
 ```powershell
 $env:Agents__Planner__Provider="Anthropic"
@@ -93,6 +97,8 @@ dotnet run --project src/backend/Impersonate.Api
 ```
 
 In a separate PowerShell terminal, set the same three variables and run `dotnet run --project src/backend/Impersonate.Worker`. User secrets are also supported through `Agents:Planner:Provider`, `Agents:Planner:Model`, and `Anthropic:ApiKey` for both host projects. `GET /api/planner/readiness` reports only whether provider, model, and credentials are present; it never returns the credential. Planning returns a structured unavailable response when configuration is missing. The planner receives project metadata but does not inspect repository files.
+
+Manual in-app check: register an enabled Anthropic model, assign it as the global Planner default, verify a project inherits it, then set a project override and confirm project-aware readiness reports `ProjectOverride`. Disable the assigned profile and confirm Start Planning becomes unavailable. No credential input exists in the UI; API and Worker credentials remain external.
 
 ## Pipeline and loop foundation
 

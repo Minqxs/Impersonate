@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
+using Impersonate.Application.AiModels;
+using Impersonate.Domain.AiModels;
 using Xunit;
 
 namespace Impersonate.IntegrationTests;
@@ -88,24 +90,38 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
         using var readiness = await client.GetAsync("/api/planner/readiness");
         var readinessJson = await readiness.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, readiness.StatusCode);
-        Assert.Contains("Incomplete", readinessJson);
+        Assert.DoesNotContain("\"status\":\"Ready\"", readinessJson);
         Assert.DoesNotContain("api-key", readinessJson, StringComparison.OrdinalIgnoreCase);
 
-        using var start = await client.PostAsync($"/api/projects/{Guid.NewGuid()}/pipeline-runs/{Guid.NewGuid()}/planning/start", null);
+        var projectResponse=await client.PostAsJsonAsync("/api/projects",new CreateProjectRequest("Readiness Project",null,"https://github.com/example/readiness","main"));var project=(await projectResponse.Content.ReadFromJsonAsync<ProjectDto>(JsonOptions))!;
+        using var start = await client.PostAsync($"/api/projects/{project.Id}/pipeline-runs/{Guid.NewGuid()}/planning/start", null);
         var error = await start.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.ServiceUnavailable, start.StatusCode);
         Assert.Contains("planner_configuration_unavailable", error);
-        Assert.Contains("Planner model is not configured", error);
     }
 
     [Fact]
     public async Task PlannerReadiness_IsReadyWhenAllSafeConfigurationIsPresent()
     {
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Agents:Planner:Provider"] = "Anthropic", ["Agents:Planner:Model"] = "configured-test-model", ["ANTHROPIC_API_KEY"] = "not-returned-test-secret" })));
+        await using var factory = new ProjectApiFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Agents:Planner:Provider"] = "Anthropic", ["Agents:Planner:Model"] = "configured-test-model", ["ANTHROPIC_API_KEY"] = "not-returned-test-secret" })));
         using var configuredClient = factory.CreateClient();
         var json = await configuredClient.GetStringAsync("/api/planner/readiness");
         Assert.Contains("Ready", json);
         Assert.DoesNotContain("not-returned-test-secret", json);
+    }
+
+    [Fact]
+    public async Task AiModels_CatalogueAssignmentsAndProjectOverride_AreScoped()
+    {
+        var created=await client.PostAsJsonAsync("/api/ai/models",new AiModelProfileRequest("Primary Planner","Anthropic","catalogue-model",null));Assert.Equal(HttpStatusCode.Created,created.StatusCode);var model=(await created.Content.ReadFromJsonAsync<AiModelProfileDto>(JsonOptions))!;
+        var duplicate=await client.PostAsJsonAsync("/api/ai/models",new AiModelProfileRequest("Duplicate","Anthropic","catalogue-model",null));Assert.Equal(HttpStatusCode.Conflict,duplicate.StatusCode);
+        var projectResponse=await client.PostAsJsonAsync("/api/projects",new CreateProjectRequest("Model Project",null,"https://github.com/example/models","main"));var project=(await projectResponse.Content.ReadFromJsonAsync<ProjectDto>(JsonOptions))!;
+        var global=await client.PutAsJsonAsync("/api/ai/role-assignments/Planner",new{aiModelProfileId=model.Id});Assert.Equal(HttpStatusCode.OK,global.StatusCode);var globalEffective=await client.GetFromJsonAsync<List<EffectiveAgentModelDto>>($"/api/projects/{project.Id}/ai/role-assignments",JsonOptions);Assert.Equal(ModelResolutionSource.GlobalDefault,globalEffective!.Single(x=>x.AgentRole==AgentRole.Planner).Source);
+        var assignment=await client.PutAsJsonAsync($"/api/projects/{project.Id}/ai/role-assignments/Planner",new{aiModelProfileId=model.Id});Assert.Equal(HttpStatusCode.OK,assignment.StatusCode);
+        var effective=await client.GetFromJsonAsync<List<EffectiveAgentModelDto>>($"/api/projects/{project.Id}/ai/role-assignments",JsonOptions);Assert.Equal(ModelResolutionSource.ProjectOverride,effective!.Single(x=>x.AgentRole==AgentRole.Planner).Source);
+        var other=await client.GetAsync($"/api/projects/{Guid.NewGuid()}/ai/role-assignments");Assert.Equal(HttpStatusCode.NotFound,other.StatusCode);
+        await client.DeleteAsync($"/api/projects/{project.Id}/ai/role-assignments/Planner");var inherited=await client.GetFromJsonAsync<List<EffectiveAgentModelDto>>($"/api/projects/{project.Id}/ai/role-assignments",JsonOptions);Assert.Equal(ModelResolutionSource.GlobalDefault,inherited!.Single(x=>x.AgentRole==AgentRole.Planner).Source);
+        await client.PatchAsJsonAsync($"/api/ai/models/{model.Id}/status",new{isEnabled=false});var disabledAssign=await client.PutAsJsonAsync($"/api/ai/role-assignments/Planner",new{aiModelProfileId=model.Id});Assert.Equal(HttpStatusCode.Conflict,disabledAssign.StatusCode);
     }
 }
 
@@ -118,8 +134,16 @@ public sealed class ProjectApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IProjectRepository>();
             services.AddSingleton<IProjectRepository, InMemoryProjectRepository>();
+            services.RemoveAll<IAiModelConfigurationRepository>();
+            services.AddSingleton<IAiModelConfigurationRepository, InMemoryAiModelConfigurationRepository>();
         });
     }
+}
+
+internal sealed class InMemoryAiModelConfigurationRepository:IAiModelConfigurationRepository
+{
+ private readonly List<AiModelProfile> models=[];private readonly List<AgentModelAssignment> assignments=[];
+ public Task<IReadOnlyList<AiModelProfile>> ListModelsAsync(CancellationToken ct)=>Task.FromResult<IReadOnlyList<AiModelProfile>>(models.ToList());public Task<AiModelProfile?> GetModelAsync(Guid id,CancellationToken ct)=>Task.FromResult(models.SingleOrDefault(x=>x.Id==id));public Task<AiModelProfile?> FindModelAsync(string p,string i,CancellationToken ct)=>Task.FromResult(models.SingleOrDefault(x=>x.Provider==p&&x.ModelIdentifier==i));public Task AddModelAsync(AiModelProfile m,CancellationToken ct){models.Add(m);return Task.CompletedTask;}public Task<IReadOnlyList<AgentModelAssignment>> ListAssignmentsAsync(Guid? p,CancellationToken ct)=>Task.FromResult<IReadOnlyList<AgentModelAssignment>>(assignments.Where(x=>x.ProjectId==p).ToList());public Task<AgentModelAssignment?> GetAssignmentAsync(AgentRole r,Guid? p,CancellationToken ct)=>Task.FromResult(assignments.SingleOrDefault(x=>x.AgentRole==r&&x.ProjectId==p));public Task AddAssignmentAsync(AgentModelAssignment a,CancellationToken ct){assignments.Add(a);return Task.CompletedTask;}public void RemoveAssignment(AgentModelAssignment a)=>assignments.Remove(a);public Task SaveChangesAsync(CancellationToken ct)=>Task.CompletedTask;
 }
 
 internal sealed class InMemoryProjectRepository : IProjectRepository

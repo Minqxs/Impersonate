@@ -15,7 +15,7 @@ import { StatusIndicator } from '../components/StatusIndicator';
 import { ProjectSelector } from '../features/projects/components/ProjectSelector';
 
 const drawerWidth = 232;
-const navigation = [['Projects', '/projects', <WorkspacesOutlinedIcon />]] as const;
+const navigation = [['Projects', '/projects', <WorkspacesOutlinedIcon />],['AI Models','/ai-models',<WorkspacesOutlinedIcon/>]] as const;
 
 export function AppLayout() {
   return (

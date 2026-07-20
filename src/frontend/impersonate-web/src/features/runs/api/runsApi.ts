@@ -10,4 +10,4 @@ export const getTimeline=(projectId:string,id:string)=>request<PipelineEvent[]>(
 export const createRun=(projectId:string,featureRequest:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs`,{method:'POST',body:JSON.stringify({featureRequest})});
 export const cancelRun=(projectId:string,id:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}/cancel`,{method:'POST'});
 export const startPlanning=(projectId:string,id:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}/planning/start`,{method:'POST'});
-export const getPlannerReadiness=()=>request<PlannerReadiness>('/api/planner/readiness');
+export const getPlannerReadiness=(projectId:string)=>request<PlannerReadiness>(`/api/projects/${projectId}/planner/readiness`);

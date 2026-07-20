@@ -23,7 +23,7 @@ internal sealed class AnthropicLanguageModelClient(HttpClient http):ILanguageMod
  }
 }
 
-internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerOptions> options):IPlannerAgent
+internal sealed class PlannerAgent(ILanguageModelClient client):IPlannerAgent
 {
  private static readonly JsonSerializerOptions Json=new(){PropertyNameCaseInsensitive=true};
  public async Task<PlannerAgentResult> PlanAsync(PlannerAgentRequest request,CancellationToken ct)
@@ -31,7 +31,8 @@ internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerO
   var prompt=await LoadPromptAsync(request.PromptVersion,ct);
   var context=JsonSerializer.Serialize(new{project=new{request.ProjectId,request.ProjectName,request.ProjectDescription,request.RepositoryUrl,request.DefaultBranch},request.FeatureRequest,constraints=new{request.MaximumTasks,repositoryInspectionAvailable=false},request.CorrectionContext});
   var schema="{summary:string,canPlan:boolean,planningNotes:string[],tasks:[{sequence:number,title:string,description:string,acceptanceCriteria:string[]}],failureReason?:string,clarifyingQuestion?:string}";
-  var response=await client.CompleteAsync(new(options.Value.Model,prompt,context,schema),ct);
+  if(!string.Equals(request.Provider,"Anthropic",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("The resolved provider is not supported by this planner adapter.");
+  var response=await client.CompleteAsync(new(request.ModelIdentifier,prompt,context,schema),ct);
   var plan=JsonSerializer.Deserialize<PlannerPlan>(response.Content,Json)??throw new InvalidDataException("Planner returned an empty response.");
   return new(plan,response.ProviderRequestId,response.InputTokenCount,response.OutputTokenCount);
  }

@@ -7,3 +7,5 @@ Infrastructure implements a readiness boundary that reports only boolean presenc
 `planner-v1.md` is an embedded resource so deployment does not depend on the working directory. The Worker is the execution boundary and the database is the durable work queue. A serializable claim transaction plus expiring claim metadata prevents concurrent processing and permits recovery.
 
 Claim leases cover the configured timeout and finite retry budget. Provider failures are persisted with safe categories, while logs contain project/run identifiers and exception type—not provider payloads, headers, prompts, or credentials.
+
+Model selection is owned by the Application resolver, not the Anthropic adapter or controllers. See [AI model configuration](ai-model-configuration.md). The adapter receives the resolved model identifier per request; only trusted server code controls provider base URLs.

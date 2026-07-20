@@ -7,3 +7,5 @@ Output is strict JSON with summary, `canPlan`, notes, tasks, or a failure reason
 The Worker retains each attempt and retries only to the configured finite limit. A successful plan becomes `ReadyForExecution`; ambiguity becomes `WaitingForClarification`; exhaustion becomes `Failed`. Continuing the same clarification conversation is deferred: create a clearer run for now.
 
 Safe readiness reports whether provider, model, and credentials are configured before the user starts planning. The API remains authoritative and the Worker idles when its matching configuration is incomplete. Run details display attempt status, safe failure category, provider/model metadata, and prompt version without exposing credentials.
+
+Planner selection resolves a project override, then global Planner default, then the legacy environment fallback. The resolved identifier is passed to the Anthropic adapter and snapshotted on each attempt. Disabled or unsupported assigned models block new planning rather than silently falling through.

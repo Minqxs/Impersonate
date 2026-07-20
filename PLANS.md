@@ -13,6 +13,7 @@ Expected completed milestones:
 Next milestone:
 
 - [x] Milestone 4: Planner agent integration
+- [x] Milestone 4 extension: In-app AI model configuration foundation
 
 Next milestone: coder and reviewer revision loop.
 
