@@ -1,5 +1,6 @@
 using Impersonate.Infrastructure.Persistence;
 using Impersonate.Application.Projects;
+using Impersonate.Application.Pipelines;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ public static class DependencyInjection
         {
             services.AddDbContext<ImpersonateDbContext>(options => options.UseSqlServer(connectionString));
             services.AddScoped<IProjectRepository, EfProjectRepository>();
+            services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
         }
 
         return services;

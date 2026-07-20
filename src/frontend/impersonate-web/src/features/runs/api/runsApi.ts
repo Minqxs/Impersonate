@@ -1,0 +1,10 @@
+const baseUrl=import.meta.env.VITE_API_BASE_URL?.replace(/\/$/,'')??'https://localhost:7001';
+export type PipelineRun={id:string;projectId:string;featureRequest:string;status:string;createdAtUtc:string;startedAtUtc?:string;completedAtUtc?:string;cancelledAtUtc?:string;failureReason?:string;stopReason?:string;loop:{status:string;currentStage:string;maximumRevisionAttempts:number;continueOnTaskFailure:boolean;retryCount:number};tasks:Array<{id:string;sequence:number;title:string;status:string;attemptCount:number;revisionCount:number;currentReview?:string;skipReason?:string;failureReason?:string}>};
+export type PipelineEvent={id:string;plannedTaskId?:string;eventType:string;previousState?:string;newState:string;message:string;createdAtUtc:string;sequence:number};
+async function request<T>(url:string,init?:RequestInit){const response=await fetch(`${baseUrl}${url}`,{...init,headers:{'Content-Type':'application/json',...init?.headers}});if(!response.ok){const body=await response.json().catch(()=>null) as {error?:string;detail?:string}|null;throw new Error(body?.error??body?.detail??`Request failed (${response.status}).`)}return response.json() as Promise<T>}
+export const runKeys={all:(projectId:string)=>['pipeline-runs',projectId] as const,detail:(projectId:string,id:string)=>['pipeline-run',projectId,id] as const,timeline:(projectId:string,id:string)=>['pipeline-timeline',projectId,id] as const};
+export const listRuns=(projectId:string,status='')=>request<PipelineRun[]>(`/api/projects/${projectId}/pipeline-runs${status?`?status=${status}`:''}`);
+export const getRun=(projectId:string,id:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}`);
+export const getTimeline=(projectId:string,id:string)=>request<PipelineEvent[]>(`/api/projects/${projectId}/pipeline-runs/${id}/timeline`);
+export const createRun=(projectId:string,featureRequest:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs`,{method:'POST',body:JSON.stringify({featureRequest})});
+export const cancelRun=(projectId:string,id:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}/cancel`,{method:'POST'});

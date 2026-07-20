@@ -77,3 +77,9 @@ Configuration health checks only stored repository and branch configuration; the
 ## Current non-goals
 
 Agents, sessions, pipelines, personalities, model routing, GitHub integration, authentication, schedules, and real repository health checks remain intentionally deferred.
+
+## Pipeline and loop foundation
+
+Project-scoped pipeline runs now persist planned tasks, attempts, review decisions, a versioned feature-delivery loop policy snapshot, and an ordered audit timeline. Public API operations live under `/api/projects/{projectId}/pipeline-runs`; frontend routes are `/projects/:projectId/runs`, `/runs/new`, and `/runs/:pipelineRunId`.
+
+The default policy allows three revision attempts after the initial coding attempt and continues after an exhausted task by skipping it. Reviewer approval gates commit. New runs remain `Created` because planner, coder, and reviewer execution is not connected. Apply `AddPipelineAndLoopFoundation` manually with the existing `dotnet ef database update` command above.
