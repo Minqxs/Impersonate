@@ -1,10 +1,10 @@
 # Impersonate
 
-Impersonate is the future home for a project-aware, personality-guided, multi-agent engineering system. This repository currently delivers **the application foundation only**; it does not yet provide product workflows.
+Impersonate is a project-aware, personality-guided engineering system. The repository currently delivers project workspaces, pipeline/loop foundations, and the first model-powered workflow: structured planning.
 
 ## Current milestone
 
-Bootstrap a modular-monolith repository with Clean Architecture backend boundaries, a worker host, and a React application shell. This milestone delivers **project-scoped workspaces**. The next planned milestone is **Pipeline and loop domain foundation**.
+Planner agent integration is complete. The next planned milestone is the coder and reviewer revision loop.
 
 ## Technology stack
 
@@ -78,7 +78,11 @@ Configuration health checks only stored repository and branch configuration; the
 
 ## Current non-goals
 
-Agents, sessions, pipelines, personalities, model routing, GitHub integration, authentication, schedules, and real repository health checks remain intentionally deferred.
+Coder/reviewer agents, repository tools, personality runtime, model routing, GitHub delivery, authentication, sessions, schedules, and real repository health checks remain deferred.
+
+## Planner configuration
+
+Set `Agents__Planner__Model` and `ANTHROPIC_API_KEY` in environment variables or user secrets for both API and Worker. Planning returns a clear unavailable response when configuration is missing. The planner does not inspect repository files.
 
 ## Pipeline and loop foundation
 

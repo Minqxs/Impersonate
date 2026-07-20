@@ -41,6 +41,8 @@ Do not prioritise the visual Brain before there is meaningful agent and loop act
 
 ### 4. Planner agent integration
 
+**Complete.** The planner is provider-neutral at the Application boundary, Claude-backed in Infrastructure, validated, persisted, and executed by the database-backed Worker.
+
 - LLM provider abstraction
 - initial Claude Messages API implementation
 - planner role configuration

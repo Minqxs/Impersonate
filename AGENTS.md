@@ -54,3 +54,9 @@ npm run build
 ## Planning
 - Plan first for complex work and follow `PLANS.md` for milestone execution plans.
 - Review the complete diff and run the repository validation commands before delivery.
+- Treat model output as untrusted and validate structured output before persistence.
+- Keep provider-specific types in Infrastructure; never log, return, or commit API keys.
+- Version planner prompts and record provider, model, and prompt version for every finite attempt.
+- Keep execution project scoped, never duplicate tasks across retries, and atomically persist successful tasks and state while retaining failed attempts.
+- The planner must not claim repository inspection until repository tools exist.
+- New sessions read `docs/development/current-state.md`; milestone completion updates it and the roadmap.
