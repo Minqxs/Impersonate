@@ -8,7 +8,7 @@ namespace Impersonate.Infrastructure.Agents.Planner;
 
 internal sealed class AnthropicLanguageModelClient(HttpClient http):ILanguageModelClient
 {
- public async Task<LanguageModelResponse> CompleteAsync(LanguageModelRequest request,CancellationToken ct)
+ public async Task<Impersonate.Application.Planning.LanguageModelResponse> CompleteAsync(Impersonate.Application.Planning.LanguageModelRequest request,CancellationToken ct)
  {
   using var message=new HttpRequestMessage(HttpMethod.Post,"v1/messages");
   message.Headers.Add("anthropic-version","2023-06-01");
@@ -23,7 +23,7 @@ internal sealed class AnthropicLanguageModelClient(HttpClient http):ILanguageMod
  }
 }
 
-internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerOptions> options):IPlannerAgent
+internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerOptions> options,IEnumerable<Impersonate.Application.Ai.IAiProviderAdapter> adapters,Impersonate.Application.Ai.IProviderCredentialStore credentials):IPlannerAgent
 {
  private static readonly JsonSerializerOptions Json=new(){PropertyNameCaseInsensitive=true};
  public async Task<PlannerAgentResult> PlanAsync(PlannerAgentRequest request,CancellationToken ct)
@@ -31,7 +31,15 @@ internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerO
   var prompt=await LoadPromptAsync(request.PromptVersion,ct);
   var context=JsonSerializer.Serialize(new{project=new{request.ProjectId,request.ProjectName,request.ProjectDescription,request.RepositoryUrl,request.DefaultBranch},request.FeatureRequest,constraints=new{request.MaximumTasks,repositoryInspectionAvailable=false},request.CorrectionContext});
   var schema="{summary:string,canPlan:boolean,planningNotes:string[],tasks:[{sequence:number,title:string,description:string,acceptanceCriteria:string[]}],failureReason?:string,clarifyingQuestion?:string}";
-  var response=await client.CompleteAsync(new(options.Value.Model,prompt,context,schema),ct);
+  Impersonate.Application.Planning.LanguageModelResponse response;
+  if(request.ProviderConnectionId is{} connectionId&&request.RoutedProvider is{} provider&&!string.IsNullOrWhiteSpace(request.RoutedModel))
+  {
+   var credential=await credentials.RetrieveAsync(connectionId,ct)??throw new InvalidOperationException("The selected provider credential is unavailable.");
+   var adapter=adapters.Single(x=>x.ProviderType==provider);
+   var routed=await adapter.CompleteAsync(new(connectionId,provider,credential),new(null,request.RoutedModel),new(request.RoutedModel,prompt,context,schema),ct);
+   response=new(routed.Content,routed.ProviderRequestId,routed.InputTokenCount,routed.OutputTokenCount);
+  }
+  else response=await client.CompleteAsync(new(options.Value.Model,prompt,context,schema),ct);
   var plan=JsonSerializer.Deserialize<PlannerPlan>(response.Content,Json)??throw new InvalidDataException("Planner returned an empty response.");
   return new(plan,response.ProviderRequestId,response.InputTokenCount,response.OutputTokenCount);
  }

@@ -100,6 +100,10 @@ Project-scoped pipeline runs now persist planned tasks, attempts, review decisio
 
 The default policy allows three revision attempts after the initial coding attempt and continues after an exhausted task by skipping it. Reviewer approval gates commit. New runs remain `Created` until a user explicitly starts planning; configured API and Worker hosts can then move them through `Planning` to `ReadyForExecution`, `WaitingForClarification`, or `Failed`.
 
+## AI provider connections and routing
+
+Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate profiles Planner work and selects an eligible model automatically. Manual choice is optional and advanced. Environment Anthropic configuration remains a legacy fallback. API and Worker must share `Ai:DataProtectionKeyPath`. Only Planner executes today.
+
 ## Planner manual acceptance test
 
 1. Configure both API and Worker as shown above with a valid model ID and API key.
