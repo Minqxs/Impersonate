@@ -52,6 +52,8 @@ Do not prioritise the visual Brain before there is meaningful agent and loop act
 - worker execution for planning
 - planner activity and failure visibility
 
+Provider connections, discovery, and deterministic Planner routing were pulled forward as a controlled Milestone 4 extension. Adaptive routing and broader role execution remain in the later routing milestone.
+
 ### 5. Coder and reviewer revision loop
 
 - filesystem, shell, repository, and diff tools

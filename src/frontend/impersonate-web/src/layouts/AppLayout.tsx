@@ -1,4 +1,5 @@
 import WorkspacesOutlinedIcon from '@mui/icons-material/WorkspacesOutlined';
+import HubOutlinedIcon from '@mui/icons-material/HubOutlined';
 import {
   AppBar,
   Box,
@@ -15,7 +16,7 @@ import { StatusIndicator } from '../components/StatusIndicator';
 import { ProjectSelector } from '../features/projects/components/ProjectSelector';
 
 const drawerWidth = 232;
-const navigation = [['Projects', '/projects', <WorkspacesOutlinedIcon />]] as const;
+const navigation = [['Projects', '/projects', <WorkspacesOutlinedIcon />],['AI Providers','/ai-providers',<HubOutlinedIcon/>]] as const;
 
 export function AppLayout() {
   return (

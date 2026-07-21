@@ -3,6 +3,9 @@ using Impersonate.Application.Projects;
 using Impersonate.Application.Pipelines;
 using Impersonate.Application.Planning;
 using Impersonate.Infrastructure.Agents.Planner;
+using Impersonate.Application.Ai;
+using Impersonate.Infrastructure.Ai;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,7 +25,21 @@ public static class DependencyInjection
             services.AddDbContext<ImpersonateDbContext>(options => options.UseSqlServer(connectionString));
             services.AddScoped<IProjectRepository, EfProjectRepository>();
             services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
+            services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
+            services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();
         }
+
+        var keyPath = configuration["Ai:DataProtectionKeyPath"] ?? Path.Combine(AppContext.BaseDirectory, "data-protection-keys");
+        services.AddDataProtection().SetApplicationName("Impersonate").PersistKeysToFileSystem(new DirectoryInfo(keyPath));
+
+        services.AddHttpClient<AnthropicProviderAdapter>(x => { x.BaseAddress = new("https://api.anthropic.com/"); x.Timeout = TimeSpan.FromSeconds(120); });
+        services.AddHttpClient<OpenAiProviderAdapter>(x => { x.BaseAddress = new("https://api.openai.com/"); x.Timeout = TimeSpan.FromSeconds(120); });
+        services.AddHttpClient<GeminiProviderAdapter>(x => { x.BaseAddress = new("https://generativelanguage.googleapis.com/"); x.Timeout = TimeSpan.FromSeconds(120); });
+        services.AddHttpClient<OpenRouterProviderAdapter>(x => { x.BaseAddress = new("https://openrouter.ai/api/"); x.Timeout = TimeSpan.FromSeconds(120); });
+        services.AddScoped<IAiProviderAdapter>(x => x.GetRequiredService<AnthropicProviderAdapter>());
+        services.AddScoped<IAiProviderAdapter>(x => x.GetRequiredService<OpenAiProviderAdapter>());
+        services.AddScoped<IAiProviderAdapter>(x => x.GetRequiredService<GeminiProviderAdapter>());
+        services.AddScoped<IAiProviderAdapter>(x => x.GetRequiredService<OpenRouterProviderAdapter>());
 
         services.AddHttpClient<ILanguageModelClient, AnthropicLanguageModelClient>((provider,client)=>{var options=provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PlannerOptions>>().Value;client.BaseAddress=new Uri("https://api.anthropic.com/");client.Timeout=TimeSpan.FromSeconds(options.TimeoutSeconds);var key=configuration["ANTHROPIC_API_KEY"]??configuration["Anthropic:ApiKey"];if(!string.IsNullOrWhiteSpace(key))client.DefaultRequestHeaders.Add("x-api-key",key);});
         services.AddScoped<IPlannerAgent, PlannerAgent>();

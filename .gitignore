@@ -11,5 +11,35 @@ coverage/
 .vs/
 .idea/
 .dotnet-home/
+.dotnet/
+.nuget/
+.artifacts/
+.test-output/
 *.user
 *.suo
+
+# Visual Studio / .NET user and build output
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+[Bb]uild[Ll]og.*
+artifacts/
+publish/
+
+# VS Code local state; keep shareable workspace configuration
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# JetBrains user state
+*.iws
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+
+# OS and editor residue
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp

@@ -119,3 +119,5 @@ Human approval is required for boundaries such as:
 - No unlimited autonomous retry.
 - No false claims of success.
 - No decorative complexity without operational value.
+
+Users connect provider access; they do not normally register individual models. Impersonate discovers models and routes automatically. Manual selection is an optional validated override. Only Planner executes today.
