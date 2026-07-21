@@ -1,6 +1,6 @@
 using Impersonate.Domain.Ai;
 namespace Impersonate.Application.Planning;
-public sealed record PlannerOptions { public string Provider{get;init;}="Anthropic"; public string Model{get;init;}=""; public string PromptVersion{get;init;}="planner-v1"; public int MaximumTasks{get;init;}=12; public int MaximumPlanningAttempts{get;init;}=2; public int TimeoutSeconds{get;init;}=120; public int PollIntervalSeconds{get;init;}=5; }
+public sealed record PlannerOptions { public string Provider{get;init;}="Anthropic"; public string Model{get;init;}=""; public string PromptVersion{get;init;}="planner-v1"; public int MaximumTasks{get;init;}=12; public int MaximumPlanningAttempts{get;init;}=2; public int MaximumOutputTokens{get;init;}=2000; public int TimeoutSeconds{get;init;}=120; public int PollIntervalSeconds{get;init;}=5; }
 public sealed record PlannerAgentRequest(Guid ProjectId,string ProjectName,string? ProjectDescription,string RepositoryUrl,string DefaultBranch,string FeatureRequest,int MaximumTasks,string PromptVersion,string? CorrectionContext=null,Guid? ProviderConnectionId=null,ProviderType? RoutedProvider=null,string? RoutedModel=null);
 public sealed record PlannerTask(int Sequence,string Title,string Description,IReadOnlyList<string> AcceptanceCriteria);
 public sealed record PlannerPlan(string Summary,bool CanPlan,IReadOnlyList<string> PlanningNotes,IReadOnlyList<PlannerTask> Tasks,string? FailureReason,string? ClarifyingQuestion);
@@ -11,7 +11,7 @@ public sealed record PlannerReadiness(string Status,bool ProviderConfigured,bool
 }
 public interface IPlannerReadiness { PlannerReadiness Get(); }
 public interface IPlannerAgent { Task<PlannerAgentResult> PlanAsync(PlannerAgentRequest request,CancellationToken cancellationToken); }
-public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema);
+public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema,int MaximumOutputTokens);
 public sealed record LanguageModelResponse(string Content,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount);
 public interface ILanguageModelClient { Task<LanguageModelResponse> CompleteAsync(LanguageModelRequest request,CancellationToken cancellationToken); }
 public static class PlannerPlanValidator

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Impersonate.Infrastructure;
 
@@ -16,7 +17,7 @@ namespace Impersonate.Infrastructure;
 public static class DependencyInjection
 {
     /// <summary>Adds configured infrastructure services without forcing database access at startup.</summary>
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         var connectionString = configuration.GetConnectionString("ImpersonateDatabase");
 
@@ -27,9 +28,12 @@ public static class DependencyInjection
             services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
             services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
             services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();
+            services.AddScoped<IModelUsageService, ModelUsageService>();
         }
 
-        var keyPath = configuration["Ai:DataProtectionKeyPath"] ?? Path.Combine(AppContext.BaseDirectory, "data-protection-keys");
+        var allowDevelopmentDefault = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+        var keyPath = DataProtectionKeyPathResolver.Resolve(configuration["Ai:DataProtectionKeyPath"], allowDevelopmentDefault);
+        services.AddSingleton(new DataProtectionKeyRingLocation(keyPath));
         services.AddDataProtection().SetApplicationName("Impersonate").PersistKeysToFileSystem(new DirectoryInfo(keyPath));
 
         services.AddHttpClient<AnthropicProviderAdapter>(x => { x.BaseAddress = new("https://api.anthropic.com/"); x.Timeout = TimeSpan.FromSeconds(120); });
