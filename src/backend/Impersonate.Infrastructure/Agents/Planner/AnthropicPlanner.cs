@@ -12,7 +12,7 @@ internal sealed class AnthropicLanguageModelClient(HttpClient http):ILanguageMod
  {
   using var message=new HttpRequestMessage(HttpMethod.Post,"v1/messages");
   message.Headers.Add("anthropic-version","2023-06-01");
-  message.Content=JsonContent.Create(new {model=request.Model,max_tokens=request.MaximumOutputTokens,temperature=0,system=request.SystemInstructions,messages=new[]{new{role="user",content=request.UserContent}}});
+  message.Content=JsonContent.Create(new {model=request.Model,max_tokens=request.MaximumOutputTokens,temperature=0,system=$"{request.SystemInstructions}\nOutput JSON Schema:\n{request.JsonSchema}",messages=new[]{new{role="user",content=request.UserContent}}});
   using var response=await http.SendAsync(message,HttpCompletionOption.ResponseHeadersRead,ct);
   var json=await response.Content.ReadAsStringAsync(ct);
   if(!response.IsSuccessStatusCode)throw new HttpRequestException($"Anthropic request failed with status {(int)response.StatusCode}.");
@@ -30,7 +30,7 @@ internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerO
  {
   var prompt=await LoadPromptAsync(request.PromptVersion,ct);
   var context=JsonSerializer.Serialize(new{project=new{request.ProjectName,request.ProjectDescription,request.DefaultBranch},request.FeatureRequest,constraints=new{request.MaximumTasks,repositoryInspectionAvailable=false},request.CorrectionContext});
-  var schema="{summary:string,canPlan:boolean,planningNotes:string[],tasks:[{sequence:number,title:string,description:string,acceptanceCriteria:string[]}],failureReason?:string,clarifyingQuestion?:string}";
+  var schema="""{"type":"object","additionalProperties":false,"required":["summary","canPlan","planningNotes","tasks","failureReason","clarifyingQuestion"],"properties":{"summary":{"type":"string"},"canPlan":{"type":"boolean"},"planningNotes":{"type":"array","items":{"type":"string"}},"tasks":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["sequence","title","description","acceptanceCriteria"],"properties":{"sequence":{"type":"integer","minimum":1},"title":{"type":"string"},"description":{"type":"string"},"acceptanceCriteria":{"type":"array","items":{"type":"string"},"minItems":1}}}},"failureReason":{"type":["string","null"]},"clarifyingQuestion":{"type":["string","null"]}}}""";
   Impersonate.Application.Planning.LanguageModelResponse response;
   if(request.ProviderConnectionId is{} connectionId&&request.RoutedProvider is{} provider&&!string.IsNullOrWhiteSpace(request.RoutedModel))
   {
