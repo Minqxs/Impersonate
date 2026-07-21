@@ -399,7 +399,6 @@ namespace Impersonate.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Impersonate.Domain.Pipelines.PlannedTask", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("AcceptanceCriteriaJson")
