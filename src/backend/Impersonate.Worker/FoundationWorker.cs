@@ -1,4 +1,5 @@
 using Impersonate.Application.Planning;
+using Impersonate.Application.Ai;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -33,8 +34,10 @@ public sealed class FoundationWorker(IServiceScopeFactory scopes,IOptions<Planne
     if(!result.Plan.CanPlan)run.RequireClarification(result.Plan.FailureReason!,result.Plan.ClarifyingQuestion!);else{foreach(var task in result.Plan.Tasks.OrderBy(x=>x.Sequence))run.AddTask(task.Sequence,task.Title,task.Description,task.AcceptanceCriteria);run.MarkReadyForExecution();}
     attempt.Succeed(result.ProviderRequestId,result.InputTokenCount,result.OutputTokenCount);await db.SaveChangesAsync(ct);await successTx.CommitAsync(ct);logger.LogInformation("Planning completed for project {ProjectId}, pipeline {PipelineId}, attempt {Attempt}.",project.Id,run.Id,number);return;
    }
+   catch(ProviderCredentialUnavailableException ex){attempt.Fail(PlanningAttemptStatus.ProviderFailed,ex.Code,ex.Message);run.Fail(ex.Message);run.ClearPlanningClaim();await db.SaveChangesAsync(ct);logger.LogWarning("Planning stopped for project {ProjectId}, pipeline {PipelineId}: provider credential configuration {FailureCode}.",project.Id,run.Id,ex.Code);return;}
+   catch(ProviderRequestException ex){attempt.Fail(PlanningAttemptStatus.ProviderFailed,ex.Code,ex.Message);await db.SaveChangesAsync(ct);logger.LogWarning(ex,"Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId}: provider returned HTTP {StatusCode} ({FailureCode}).",number,project.Id,run.Id,(int)ex.StatusCode,ex.Code);if(ex.IsTransient)continue;run.Fail(ex.Message);run.ClearPlanningClaim();await db.SaveChangesAsync(ct);return;}
    catch(OperationCanceledException) when(ct.IsCancellationRequested){attempt.Fail(PlanningAttemptStatus.Cancelled,"cancelled","Planning was cancelled.");await db.SaveChangesAsync(CancellationToken.None);throw;}
-   catch(Exception ex){var timedOut=ex is TaskCanceledException;attempt.Fail(timedOut?PlanningAttemptStatus.TimedOut:PlanningAttemptStatus.ProviderFailed,timedOut?"provider_timeout":"provider_failed",timedOut?"The configured planner provider timed out.":"The configured planner provider failed.");await db.SaveChangesAsync(ct);logger.LogWarning("Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId} ({FailureType}).",number,project.Id,run.Id,ex.GetType().Name);}
+   catch(Exception ex){var timedOut=ex is TaskCanceledException;attempt.Fail(timedOut?PlanningAttemptStatus.TimedOut:PlanningAttemptStatus.ProviderFailed,timedOut?"provider_timeout":"provider_failed",timedOut?"The configured planner provider timed out.":$"The planner failed while processing the provider response ({ex.GetType().Name}).");await db.SaveChangesAsync(ct);logger.LogWarning(ex,"Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId} ({FailureType}).",number,project.Id,run.Id,ex.GetType().Name);}
   }
   run.Fail("Planning attempts were exhausted.");run.ClearPlanningClaim();await db.SaveChangesAsync(ct);
  }

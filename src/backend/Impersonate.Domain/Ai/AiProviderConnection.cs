@@ -27,6 +27,7 @@ public sealed class AiProviderConnection
     public void Synchronised(DateTimeOffset? now = null) { LastModelSyncAtUtc = UpdatedAtUtc = now ?? DateTimeOffset.UtcNow; }
     public void Disable() { Status = ProviderConnectionStatus.Disabled; UpdatedAtUtc = DateTimeOffset.UtcNow; }
     public void Enable() { Status = ProviderConnectionStatus.PendingValidation; UpdatedAtUtc = DateTimeOffset.UtcNow; }
+    public void CredentialsReplaced(DateTimeOffset? now=null) { Status=ProviderConnectionStatus.PendingValidation;LastFailureCode=null;LastSafeFailureMessage=null;UpdatedAtUtc=now??DateTimeOffset.UtcNow; }
     private static string Required(string value, int max) => string.IsNullOrWhiteSpace(value) || value.Trim().Length > max ? throw new ArgumentException("Value is required and limited.") : value.Trim();
 }
 

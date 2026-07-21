@@ -12,7 +12,7 @@ internal sealed class AnthropicLanguageModelClient(HttpClient http):ILanguageMod
  {
   using var message=new HttpRequestMessage(HttpMethod.Post,"v1/messages");
   message.Headers.Add("anthropic-version","2023-06-01");
-  message.Content=JsonContent.Create(new {model=request.Model,max_tokens=4096,system=request.SystemInstructions,messages=new[]{new{role="user",content=request.UserContent}}});
+  message.Content=JsonContent.Create(new {model=request.Model,max_tokens=request.MaximumOutputTokens,temperature=0,system=request.SystemInstructions,messages=new[]{new{role="user",content=request.UserContent}}});
   using var response=await http.SendAsync(message,HttpCompletionOption.ResponseHeadersRead,ct);
   var json=await response.Content.ReadAsStringAsync(ct);
   if(!response.IsSuccessStatusCode)throw new HttpRequestException($"Anthropic request failed with status {(int)response.StatusCode}.");
@@ -29,17 +29,17 @@ internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerO
  public async Task<PlannerAgentResult> PlanAsync(PlannerAgentRequest request,CancellationToken ct)
  {
   var prompt=await LoadPromptAsync(request.PromptVersion,ct);
-  var context=JsonSerializer.Serialize(new{project=new{request.ProjectId,request.ProjectName,request.ProjectDescription,request.RepositoryUrl,request.DefaultBranch},request.FeatureRequest,constraints=new{request.MaximumTasks,repositoryInspectionAvailable=false},request.CorrectionContext});
+  var context=JsonSerializer.Serialize(new{project=new{request.ProjectName,request.ProjectDescription,request.DefaultBranch},request.FeatureRequest,constraints=new{request.MaximumTasks,repositoryInspectionAvailable=false},request.CorrectionContext});
   var schema="{summary:string,canPlan:boolean,planningNotes:string[],tasks:[{sequence:number,title:string,description:string,acceptanceCriteria:string[]}],failureReason?:string,clarifyingQuestion?:string}";
   Impersonate.Application.Planning.LanguageModelResponse response;
   if(request.ProviderConnectionId is{} connectionId&&request.RoutedProvider is{} provider&&!string.IsNullOrWhiteSpace(request.RoutedModel))
   {
-   var credential=await credentials.RetrieveAsync(connectionId,ct)??throw new InvalidOperationException("The selected provider credential is unavailable.");
+   var credentialRead=await credentials.RetrieveAsync(connectionId,ct);if(credentialRead.Status!=Impersonate.Application.Ai.ProviderCredentialReadStatus.Found)throw new Impersonate.Application.Ai.ProviderCredentialUnavailableException(credentialRead.SafeFailureCode!,credentialRead.SafeFailureMessage!);var credential=credentialRead.Credential!;
    var adapter=adapters.Single(x=>x.ProviderType==provider);
-   var routed=await adapter.CompleteAsync(new(connectionId,provider,credential),new(null,request.RoutedModel),new(request.RoutedModel,prompt,context,schema),ct);
+   var routed=await adapter.CompleteAsync(new(connectionId,provider,credential),new(null,request.RoutedModel),new(request.RoutedModel,prompt,context,schema,options.Value.MaximumOutputTokens),ct);
    response=new(routed.Content,routed.ProviderRequestId,routed.InputTokenCount,routed.OutputTokenCount);
   }
-  else response=await client.CompleteAsync(new(options.Value.Model,prompt,context,schema),ct);
+  else response=await client.CompleteAsync(new(options.Value.Model,prompt,context,schema,options.Value.MaximumOutputTokens),ct);
   var plan=JsonSerializer.Deserialize<PlannerPlan>(response.Content,Json)??throw new InvalidDataException("Planner returned an empty response.");
   return new(plan,response.ProviderRequestId,response.InputTokenCount,response.OutputTokenCount);
  }

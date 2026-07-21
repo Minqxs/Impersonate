@@ -7,17 +7,22 @@ public enum TaskComplexity { Simple, Moderate, High }
 public enum RiskLevel { Low, Moderate, High }
 public enum Sensitivity { Low, Balanced, High }
 public sealed record ProviderCredential(string ApiKey, string? Organisation = null, string? Project = null);
+public enum ProviderCredentialReadStatus { Found, Missing, Unreadable }
+public sealed record ProviderCredentialReadResult(ProviderCredentialReadStatus Status,ProviderCredential? Credential,string? SafeFailureCode,string? SafeFailureMessage);
+public sealed class ProviderCredentialStorageException:Exception { public ProviderCredentialStorageException():base("The provider credential could not be stored safely."){} }
+public sealed class ProviderCredentialUnavailableException(string code,string safeMessage):Exception(safeMessage) { public string Code{get;}=code; }
+public sealed class ProviderRequestException(string code,string safeMessage,System.Net.HttpStatusCode statusCode,bool isTransient):Exception(safeMessage) { public string Code{get;}=code;public System.Net.HttpStatusCode StatusCode{get;}=statusCode;public bool IsTransient{get;}=isTransient; }
 public sealed record ProviderConnectionContext(Guid ConnectionId, ProviderType ProviderType, ProviderCredential Credential);
 public sealed record ProviderValidationResult(bool Succeeded, bool InvalidCredentials, string? FailureCode, string SafeMessage);
 public sealed record ProviderModel(string Id, string Name, string? Description, ModelLifecycleStatus Lifecycle, ModelCapability Capabilities, CapabilityMetadataSource CapabilitySource, int? ContextWindow, int? MaximumOutput);
 public sealed record RoutedModel(Guid? DiscoveredModelId, string ProviderModelId);
-public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema);
+public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema,int MaximumOutputTokens);
 public sealed record LanguageModelResponse(string Content,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount);
 
 public interface IProviderCredentialStore
 {
     Task StoreAsync(Guid connectionId, ProviderCredential credential, CancellationToken cancellationToken);
-    Task<ProviderCredential?> RetrieveAsync(Guid connectionId, CancellationToken cancellationToken);
+    Task<ProviderCredentialReadResult> RetrieveAsync(Guid connectionId, CancellationToken cancellationToken);
     Task DeleteAsync(Guid connectionId, CancellationToken cancellationToken);
 }
 public interface IAiProviderAdapter
@@ -39,6 +44,8 @@ public interface IProjectAiService
     Task<ProjectAiReadiness?> GetReadinessAsync(Guid projectId,CancellationToken cancellationToken);
     Task<ModelSelectionResult?> PreviewAsync(Guid projectId,AgentRole role,string description,Guid? manualModelOverrideId,CancellationToken cancellationToken);
 }
+public sealed record ModelUsageSummary(string Provider,string Model,int AttemptCount,int SuccessfulPlanCount,int InvalidOutputCount,int ProviderFailureCount,int TimedOutCount,long InputTokenCount,long OutputTokenCount,double AverageDurationMilliseconds,double ValidPlanRate);
+public interface IModelUsageService { Task<IReadOnlyList<ModelUsageSummary>> GetPlanningUsageAsync(int days,CancellationToken cancellationToken); }
 public interface IAiRoutingRepository
 {
     Task<IReadOnlyList<AiProviderConnection>> GetConnectionsAsync(CancellationToken cancellationToken);
@@ -54,12 +61,14 @@ public interface IAiRoutingRepository
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 public sealed record CreateProviderConnectionRequest(string DisplayName, string ApiKey, string? Organisation = null, string? Project = null);
+public sealed record ReplaceProviderCredentialRequest(string ApiKey,string? Organisation=null,string? Project=null);
 public sealed record ProviderConnectionDto(Guid Id, ProviderType ProviderType, string DisplayName, ProviderConnectionStatus Status, DateTimeOffset? LastValidatedAtUtc, DateTimeOffset? LastModelSyncAtUtc, int AvailableModelCount, string? LastFailureCode, string? LastSafeFailureMessage);
 public sealed record DiscoveredModelDto(Guid Id, Guid ProviderConnectionId, ProviderType ProviderType, string ProviderModelId, string DisplayName, string? Description, ModelLifecycleStatus LifecycleStatus, bool IsAvailable, int? ContextWindowSize, int? MaximumOutputSize);
 public interface IAiProviderConnectionService
 {
     Task<IReadOnlyList<ProviderConnectionDto>> ListAsync(CancellationToken cancellationToken);
     Task<ProviderConnectionDto> CreateAsync(ProviderType providerType, CreateProviderConnectionRequest request, CancellationToken cancellationToken);
+    Task<ProviderConnectionDto?> ReplaceCredentialsAsync(Guid connectionId,ReplaceProviderCredentialRequest request,CancellationToken cancellationToken);
     Task<ProviderConnectionDto?> ValidateAsync(Guid connectionId, CancellationToken cancellationToken);
     Task<ProviderConnectionDto?> SynchroniseAsync(Guid connectionId, CancellationToken cancellationToken);
     Task<IReadOnlyList<DiscoveredModelDto>?> ModelsAsync(Guid connectionId, CancellationToken cancellationToken);

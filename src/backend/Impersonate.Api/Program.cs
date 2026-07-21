@@ -12,7 +12,7 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddHealthChecks();
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddPolicy("FrontendDevelopment", policy =>
@@ -20,6 +20,7 @@ builder.Services.AddCors(options => options.AddPolicy("FrontendDevelopment", pol
         .AllowAnyHeader()
         .AllowAnyMethod()));
 var app = builder.Build();
+app.Logger.LogInformation("Data Protection key ring: {DataProtectionKeyRingPath}",app.Services.GetRequiredService<Impersonate.Infrastructure.Ai.DataProtectionKeyRingLocation>().Path);
 app.Logger.LogInformation("Starting Impersonate API");
 if (app.Environment.IsDevelopment())
 {
@@ -36,9 +37,11 @@ app.MapHealthChecks("/health");
 app.MapGet("/api/planner/readiness",(IPlannerReadiness readiness)=>Results.Ok(readiness.Get()));
 var ai=app.MapGroup("/api/ai");
 ai.MapGet("/providers",async(IAiProviderConnectionService service,CancellationToken ct)=>Results.Ok(new{supportedProviders=Enum.GetValues<ProviderType>().Where(x=>x is ProviderType.Anthropic or ProviderType.OpenAI or ProviderType.GoogleGemini or ProviderType.OpenRouter),connections=await service.ListAsync(ct)}));
-ai.MapPost("/providers/{providerType}/connections",async(ProviderType providerType,CreateProviderConnectionRequest request,IAiProviderConnectionService service,CancellationToken ct)=>{try{var connection=await service.CreateAsync(providerType,request,ct);return Results.Created($"/api/ai/provider-connections/{connection.Id}",connection);}catch(ArgumentException ex){return Results.BadRequest(new ApiError("validation",ex.Message));}});
+ai.MapGet("/usage/models",async([Microsoft.AspNetCore.Mvc.FromQuery]int? days,[Microsoft.AspNetCore.Mvc.FromServices]IModelUsageService service,CancellationToken ct)=>Results.Ok(new{days=Math.Clamp(days??30,1,365),models=await service.GetPlanningUsageAsync(days??30,ct)}));
+ai.MapPost("/providers/{providerType}/connections",async(ProviderType providerType,CreateProviderConnectionRequest request,IAiProviderConnectionService service,CancellationToken ct)=>{try{var connection=await service.CreateAsync(providerType,request,ct);return Results.Created($"/api/ai/provider-connections/{connection.Id}",connection);}catch(ArgumentException ex){return Results.BadRequest(new ApiError("validation",ex.Message));}catch(InvalidOperationException ex){return Results.Conflict(new ApiError("provider_connection_exists",ex.Message));}catch(ProviderCredentialStorageException ex){return Results.Json(new ApiError("credential_storage_failed",ex.Message),statusCode:500);}});
+ai.MapPut("/provider-connections/{connectionId:guid}/credentials",async(Guid connectionId,ReplaceProviderCredentialRequest request,IAiProviderConnectionService service,CancellationToken ct)=>{try{return (await service.ReplaceCredentialsAsync(connectionId,request,ct)) is{}connection?Results.Ok(connection):Results.NotFound(new ApiError("not_found","Provider connection was not found."));}catch(ArgumentException ex){return Results.BadRequest(new ApiError("validation",ex.Message));}catch(ProviderCredentialStorageException ex){return Results.Json(new ApiError("credential_storage_failed",ex.Message),statusCode:500);}});
 ai.MapPost("/provider-connections/{connectionId:guid}/validate",async(Guid connectionId,IAiProviderConnectionService service,CancellationToken ct)=>(await service.ValidateAsync(connectionId,ct)) is{}x?Results.Ok(x):Results.NotFound());
-ai.MapPost("/provider-connections/{connectionId:guid}/sync-models",async(Guid connectionId,IAiProviderConnectionService service,CancellationToken ct)=>{try{return (await service.SynchroniseAsync(connectionId,ct)) is{}x?Results.Ok(x):Results.NotFound();}catch(InvalidOperationException ex){return Results.Conflict(new ApiError("connection_not_ready",ex.Message));}catch(HttpRequestException){return Results.Json(new ApiError("provider_unavailable","The provider could not synchronise models."),statusCode:503);}});
+ai.MapPost("/provider-connections/{connectionId:guid}/sync-models",async(Guid connectionId,IAiProviderConnectionService service,CancellationToken ct)=>{try{return (await service.SynchroniseAsync(connectionId,ct)) is{}x?Results.Ok(x):Results.NotFound();}catch(ProviderCredentialUnavailableException ex){return Results.Conflict(new ApiError(ex.Code,ex.Message));}catch(InvalidOperationException ex){return Results.Conflict(new ApiError("connection_not_ready",ex.Message));}catch(HttpRequestException){return Results.Json(new ApiError("provider_unavailable","The provider could not synchronise models."),statusCode:503);}});
 ai.MapGet("/provider-connections/{connectionId:guid}/models",async(Guid connectionId,IAiProviderConnectionService service,CancellationToken ct)=>(await service.ModelsAsync(connectionId,ct)) is{}x?Results.Ok(x):Results.NotFound());
 ai.MapPut("/provider-connections/{connectionId:guid}/disable",async(Guid connectionId,IAiProviderConnectionService service,CancellationToken ct)=>await service.DisableAsync(connectionId,ct)?Results.NoContent():Results.NotFound());
 ai.MapDelete("/provider-connections/{connectionId:guid}",async(Guid connectionId,IAiProviderConnectionService service,CancellationToken ct)=>await service.RemoveAsync(connectionId,ct)?Results.NoContent():Results.NotFound());
