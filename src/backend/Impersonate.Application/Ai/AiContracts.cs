@@ -33,6 +33,12 @@ public sealed record ModelSelectionRequest(Guid ProjectId, Guid? PipelineRunId, 
 public sealed record SelectedModel(Guid? ConnectionId, Guid? DiscoveredModelId, ProviderType ProviderType, string ProviderModelId, ModelSelectionSource Source, int Score, string Explanation);
 public sealed record ModelSelectionResult(bool Succeeded, TaskProfile Profile, SelectedModel? Selection, IReadOnlyList<SelectedModel> EligibleAlternatives, string? FailureCode, string? FailureMessage);
 public interface IModelRouter { Task<ModelSelectionResult> SelectAsync(ModelSelectionRequest request, CancellationToken cancellationToken); }
+public sealed record ProjectAiReadiness(int ConnectedProviderCount,int ValidProviderCount,int DiscoveredEligiblePlannerModels,string RoutingStatus,IReadOnlyList<string> Blockers);
+public interface IProjectAiService
+{
+    Task<ProjectAiReadiness?> GetReadinessAsync(Guid projectId,CancellationToken cancellationToken);
+    Task<ModelSelectionResult?> PreviewAsync(Guid projectId,AgentRole role,string description,Guid? manualModelOverrideId,CancellationToken cancellationToken);
+}
 public interface IAiRoutingRepository
 {
     Task<IReadOnlyList<AiProviderConnection>> GetConnectionsAsync(CancellationToken cancellationToken);

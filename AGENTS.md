@@ -68,3 +68,4 @@ npm run build
 - Do not begin coder or reviewer execution while completing the planner milestone.
 - New sessions read `docs/development/current-state.md`; milestone completion updates it and the roadmap.
 - Provider access is user-managed; discovery and routing are system-managed. Automatic selection is the default, and persisted decisions are authoritative for Workers.
+- Run UI readiness is project scoped and feature-specific; never gate routed planning on the legacy global environment-readiness endpoint.

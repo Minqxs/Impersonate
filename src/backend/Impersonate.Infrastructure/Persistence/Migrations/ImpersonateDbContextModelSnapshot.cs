@@ -350,7 +350,6 @@ namespace Impersonate.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Impersonate.Domain.Pipelines.PipelineRunEvent", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")

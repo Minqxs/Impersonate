@@ -104,6 +104,8 @@ The default policy allows three revision attempts after the initial coding attem
 
 Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate profiles Planner work and selects an eligible model automatically. Manual choice is optional and advanced. Environment Anthropic configuration remains a legacy fallback. API and Worker must share `Ai:DataProtectionKeyPath`. Only Planner executes today.
 
+Created run details use project-scoped AI readiness and preview the feature-specific provider, model, and routing explanation before enabling **Start Planning**. The global `/api/planner/readiness` endpoint reports legacy environment fallback health only.
+
 ## Planner manual acceptance test
 
 1. Configure both API and Worker as shown above with a valid model ID and API key.
