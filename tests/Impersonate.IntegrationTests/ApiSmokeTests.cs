@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Impersonate.Application.Projects;
+using Impersonate.Application.Ai;
+using Impersonate.Domain.Ai;
 using Impersonate.Domain.Projects;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -55,6 +57,7 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
         var invalid = await client.PostAsJsonAsync("/api/projects", new CreateProjectRequest("", null, "not-a-url", ""));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.NotFound,(await client.GetAsync($"/api/projects/{Guid.NewGuid()}/ai/readiness")).StatusCode);
     }
 
     [Fact]
@@ -118,8 +121,15 @@ public sealed class ProjectApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IProjectRepository>();
             services.AddSingleton<IProjectRepository, InMemoryProjectRepository>();
+            services.RemoveAll<IAiRoutingRepository>();
+            services.AddSingleton<IAiRoutingRepository, EmptyAiRoutingRepository>();
         });
     }
+}
+
+internal sealed class EmptyAiRoutingRepository:IAiRoutingRepository
+{
+ public Task<IReadOnlyList<AiProviderConnection>> GetConnectionsAsync(CancellationToken ct)=>Task.FromResult<IReadOnlyList<AiProviderConnection>>([]);public Task<AiProviderConnection?> GetConnectionAsync(Guid id,CancellationToken ct)=>Task.FromResult<AiProviderConnection?>(null);public Task<IReadOnlyList<DiscoveredModel>> GetModelsAsync(Guid? id,CancellationToken ct)=>Task.FromResult<IReadOnlyList<DiscoveredModel>>([]);public Task<ProjectAiRoutingPolicy?> GetPolicyAsync(Guid id,CancellationToken ct)=>Task.FromResult<ProjectAiRoutingPolicy?>(null);public Task<ProjectAiRoutingPolicy> GetOrCreatePolicyAsync(Guid id,CancellationToken ct)=>Task.FromResult(ProjectAiRoutingPolicy.Create(id));public Task<ModelSelectionDecision?> GetDecisionAsync(Guid project,Guid run,CancellationToken ct)=>Task.FromResult<ModelSelectionDecision?>(null);public Task AddConnectionAsync(AiProviderConnection x,CancellationToken ct)=>Task.CompletedTask;public Task AddModelAsync(DiscoveredModel x,CancellationToken ct)=>Task.CompletedTask;public Task RemoveConnectionAsync(AiProviderConnection x,CancellationToken ct)=>Task.CompletedTask;public Task AddDecisionAsync(ModelSelectionDecision x,CancellationToken ct)=>Task.CompletedTask;public Task SaveChangesAsync(CancellationToken ct)=>Task.CompletedTask;
 }
 
 internal sealed class InMemoryProjectRepository : IProjectRepository

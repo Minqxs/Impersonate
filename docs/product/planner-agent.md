@@ -7,3 +7,5 @@ Output is strict JSON with summary, `canPlan`, notes, tasks, or a failure reason
 The Worker retains each attempt and retries only to the configured finite limit. A successful plan becomes `ReadyForExecution`; ambiguity becomes `WaitingForClarification`; exhaustion becomes `Failed`. Continuing the same clarification conversation is deferred: create a clearer run for now.
 
 Safe readiness reports whether provider, model, and credentials are configured before the user starts planning. The API remains authoritative and the Worker idles when its matching configuration is incomplete. Run details display attempt status, safe failure category, provider/model metadata, and prompt version without exposing credentials.
+
+For connected providers, project-scoped routing readiness supersedes that legacy environment check. Created run details preview the selected provider, model, source, and explanation for the actual feature request. Start Planning is enabled by a successful preview; its backend operation remains authoritative and persists the final choice before Worker execution.
