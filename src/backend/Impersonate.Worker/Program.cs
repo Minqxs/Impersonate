@@ -6,6 +6,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddHostedService<FoundationWorker>();
+builder.Services.AddHostedService<TaskExecutionWorker>();
 
 var host = builder.Build();
 host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DataProtection").LogInformation("Data Protection key ring: {DataProtectionKeyRingPath}",host.Services.GetRequiredService<Impersonate.Infrastructure.Ai.DataProtectionKeyRingLocation>().Path);

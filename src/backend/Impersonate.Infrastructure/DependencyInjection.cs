@@ -10,6 +10,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Impersonate.Application.Execution;
+using Impersonate.Infrastructure.Execution;
+using Impersonate.Infrastructure.Agents.Execution;
 
 namespace Impersonate.Infrastructure;
 
@@ -19,6 +22,8 @@ public static class DependencyInjection
     /// <summary>Adds configured infrastructure services without forcing database access at startup.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
+        services.AddOptions<ExecutionOptions>().BindConfiguration("Execution").Validate(x=>x.MaximumArtifactBytes is>=1024 and<=10_000_000&&x.MaximumToolOutputCharacters is>=1000 and<=1_000_000&&x.MaximumCoderSteps is>=1 and<=100&&x.CommandTimeoutSeconds is>=1 and<=600&&x.ClaimMinutes is>=1 and<=120,"Execution limits are invalid.").Validate(x=>environment.IsDevelopment()||environment.IsEnvironment("Testing")||(!string.IsNullOrWhiteSpace(x.WorkspaceRoot)&&!string.IsNullOrWhiteSpace(x.ArtifactRoot)),"Production requires explicit durable execution roots.").ValidateOnStart();
+        services.AddSingleton<IExecutionArtifactStore,LocalExecutionArtifactStore>();services.AddSingleton<RepositoryWorkspaceService>();services.AddSingleton<IRepositoryWorkspaceService>(x=>x.GetRequiredService<RepositoryWorkspaceService>());services.AddSingleton<IRepositoryTools,SafeRepositoryTools>();services.AddScoped<ICoderAgent,CoderAgent>();services.AddScoped<IReviewerAgent,ReviewerAgent>();
         var connectionString = configuration.GetConnectionString("ImpersonateDatabase");
 
         if (!string.IsNullOrWhiteSpace(connectionString))

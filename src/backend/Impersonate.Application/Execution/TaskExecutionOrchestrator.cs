@@ -1,0 +1,36 @@
+using System.Text.Json;
+using Impersonate.Application.Ai;
+using Impersonate.Application.Pipelines;
+using Impersonate.Application.Projects;
+using Impersonate.Domain.Ai;
+using Impersonate.Domain.Pipelines;
+using Microsoft.Extensions.Options;
+
+namespace Impersonate.Application.Execution;
+
+public interface ITaskExecutionOrchestrator { Task<bool> ProcessOneAsync(string workerId,CancellationToken ct); }
+
+internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs,IProjectRepository projects,IModelRouter router,IAiRoutingRepository ai,IRepositoryWorkspaceService workspaces,IRepositoryTools tools,IExecutionArtifactStore artifacts,ICoderAgent coder,IReviewerAgent reviewer,IOptions<ExecutionOptions> options):ITaskExecutionOrchestrator
+{
+ public async Task<bool> ProcessOneAsync(string workerId,CancellationToken ct)
+ {
+  var now=DateTimeOffset.UtcNow;var run=await runs.ClaimNextExecutionAsync(Guid.NewGuid(),workerId,now,now.AddMinutes(options.Value.ClaimMinutes),ct);if(run is null)return false;var task=run.Tasks.Single(x=>x.Id==run.ExecutionClaimedTaskId);var attempt=task.Attempts.Last();var project=await projects.GetAsync(run.ProjectId,ct);if(project is null){await Fail(run,task,attempt,"workspace_preparation_failed","Project was not found.",ct);return true;}
+  var priorApproved=run.Tasks.Where(x=>x.Sequence<task.Sequence&&x.Status==PlannedTaskStatus.Approved).OrderBy(x=>x.Sequence).ToList();var priorPatches=priorApproved.Select(x=>x.Attempts.Last().PatchArtifactReference).Where(x=>x is not null).Cast<string>().ToList();var currentPatch=task.Status==PlannedTaskStatus.Reviewing?attempt.PatchArtifactReference:attempt.AttemptType==TaskAttemptType.Revision?task.Attempts.Where(x=>x.AttemptNumber<attempt.AttemptNumber).LastOrDefault()?.PatchArtifactReference:null;
+  var prepared=await workspaces.PrepareAsync(new(run.ProjectId,run.Id,task.Id,attempt.AttemptNumber,project.RepositoryUrl,project.DefaultBranch,priorPatches,currentPatch),ct);if(!prepared.Succeeded){await Fail(run,task,attempt,prepared.FailureCode!,prepared.FailureMessage!,ct);return true;}var workspace=prepared.Workspace!;
+  var feedback=task.ReviewDecisions.LastOrDefault(x=>x.Decision==ReviewDecisionType.ChangesRequested)?.Feedback;var scope=new ArtifactScope(run.ProjectId,run.Id,task.Id,attempt.AttemptNumber);CoderResult coded;StoredArtifact patch;string diffText;
+  if(task.Status==PlannedTaskStatus.Reviewing)
+  {
+   if(attempt.PatchArtifactReference is null||attempt.PatchSha256 is null){await Fail(run,task,attempt,"patch_generation_failed","The persisted review patch is unavailable.",ct);return true;}diffText=await artifacts.ReadTextAsync(attempt.PatchArtifactReference,2_000_000,ct);patch=new(attempt.PatchArtifactReference,attempt.PatchSha256,System.Text.Encoding.UTF8.GetByteCount(diffText),"text/x-diff",attempt.CompletedAtUtc??now);coded=new(true,attempt.Summary??"Persisted coding attempt",Deserialize(attempt.ChangedFilesJson),Deserialize(attempt.ValidationSummaryJson),attempt.ToolStepCount,attempt.ProviderRequestId,attempt.InputTokenCount,attempt.OutputTokenCount);
+  }
+  else
+  {
+   var coderSelection=await Select(run,task,attempt,AgentRole.Coder,task.CoderModelOverrideId,ct);if(!coderSelection.Succeeded){await Fail(run,task,attempt,"coder_provider_failed",coderSelection.FailureMessage??"No eligible Coder model is available.",ct);return true;}coded=await coder.ExecuteAsync(new(run.ProjectId,run.Id,run.FeatureRequest,task.Id,task.Title,task.Description,task.AcceptanceCriteria,attempt.AttemptNumber,task.RevisionCount,feedback,priorApproved.Select(x=>x.Attempts.Last().Summary??x.Title).ToList(),workspace,coderSelection.Selection!),ct);if(!coded.Succeeded){await Fail(run,task,attempt,coded.FailureCode??"coder_provider_failed",coded.FailureMessage??"Coder failed.",ct);return true;}var diff=await tools.GetDiffAsync(workspace,ct);if(!diff.Succeeded||string.IsNullOrWhiteSpace(diff.Output)){await Fail(run,task,attempt,"patch_generation_failed",diff.FailureMessage??"No task patch was generated.",ct);return true;}diffText=diff.Output;patch=await artifacts.WriteTextAsync(scope,"task.patch",diffText,"text/x-diff",ct);attempt.RecordExecution(coderSelection.Selection!.ProviderType.ToString(),coderSelection.Selection.ProviderModelId,"coder-v1",coded.ProviderRequestId,coded.InputTokenCount,coded.OutputTokenCount,coded.ToolStepCount,JsonSerializer.Serialize(coded.ChangedFiles),patch.Reference,patch.Sha256,JsonSerializer.Serialize(coded.ValidationNotes));task.CompleteAttempt(coded.Summary);run.MoveTaskToReview(task);await runs.SaveChangesAsync(ct);
+  }
+  var reviewerSelection=await Select(run,task,attempt,AgentRole.Reviewer,task.ReviewerModelOverrideId,ct);if(!reviewerSelection.Succeeded){await Fail(run,task,attempt,"reviewer_provider_failed",reviewerSelection.FailureMessage??"No eligible Reviewer model is available.",ct);return true;}var reviewed=await reviewer.ReviewAsync(new(run.ProjectId,run.Id,run.FeatureRequest,task.Id,task.Title,task.Description,task.AcceptanceCriteria,attempt.AttemptNumber,diffText,patch.Sha256,coded.ChangedFiles,coded.ValidationNotes,coded.Summary,feedback,workspace,reviewerSelection.Selection!),ct);if(!reviewed.Succeeded){await Fail(run,task,attempt,reviewed.FailureCode??"reviewer_provider_failed",reviewed.FailureMessage??"Reviewer failed.",ct);return true;}
+  var decision=run.RecordReview(task,reviewed.Decision!.Value,reviewed.Summary,reviewed.Feedback);decision.RecordExecution(reviewerSelection.Selection!.ProviderType.ToString(),reviewerSelection.Selection.ProviderModelId,"reviewer-v1",reviewed.ProviderRequestId,reviewed.InputTokenCount,reviewed.OutputTokenCount,patch.Sha256,JsonSerializer.Serialize(reviewed.Findings));await artifacts.WriteTextAsync(scope,"reviewer-report.json",JsonSerializer.Serialize(reviewed),"application/json",ct);
+  if(reviewed.Decision==ReviewDecisionType.Approved)run.FinishApprovedTask(task);else if(task.RevisionCount>=task.MaximumRevisionAttempts)run.ResolveRetryExhaustion(task,"Revision limit reached after Reviewer changes were requested.");else run.ClearExecutionClaim();await runs.SaveChangesAsync(ct);return true;
+ }
+ private async Task<ModelSelectionResult> Select(PipelineRun run,PlannedTask task,TaskAttempt attempt,AgentRole role,Guid? overrideId,CancellationToken ct){var selected=await router.SelectAsync(new(run.ProjectId,run.Id,role,$"{task.Title}\n{task.Description}",overrideId),ct);if(selected.Succeeded&&selected.Selection is{} model){await ai.AddDecisionAsync(ModelSelectionDecision.Create(run.ProjectId,run.Id,role,model.ConnectionId,model.DiscoveredModelId,model.ProviderType.ToString(),model.ProviderModelId,model.Source,model.Score,JsonSerializer.Serialize(selected.Profile),model.Explanation,JsonSerializer.Serialize(selected.EligibleAlternatives),plannedTaskId:task.Id,taskAttemptId:attempt.Id),ct);await ai.SaveChangesAsync(ct);}return selected;}
+ private async Task Fail(PipelineRun run,PlannedTask task,TaskAttempt attempt,string code,string message,CancellationToken ct){if(attempt.Status==TaskAttemptStatus.Started)attempt.Fail(code,message);run.ResolveExecutionFailure(task,$"{code}: {message}");await runs.SaveChangesAsync(ct);}
+ private static IReadOnlyList<string> Deserialize(string json){try{return JsonSerializer.Deserialize<List<string>>(json)??[];}catch{return [];}}
+}
