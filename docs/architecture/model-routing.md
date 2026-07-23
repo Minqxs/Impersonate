@@ -70,6 +70,10 @@ A task profile may include:
 
 Using different models or configurations can reduce shared blind spots.
 
+## Current execution behavior
+
+Planner, Coder, and Reviewer are routed independently. Coder and Reviewer decisions are persisted with pipeline-run, planned-task, and task-attempt linkage. A task may override either discovered model before it starts; disconnected, unavailable, or incompatible overrides are rejected. The Coder tool protocol is provider-neutral, so Infrastructure translates the same structured loop through any configured provider adapter instead of depending on native provider tool calls.
+
 ## Learning from outcomes
 
 Capture:

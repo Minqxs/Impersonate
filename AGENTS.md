@@ -50,6 +50,9 @@ npm run build
 ## Engineering personality
 - Personality is user-owned, versioned guidance, not the source of truth.
 - Models may deviate when task requirements, repository evidence, security, official documentation, or stronger technical reasoning justify it.
+- Execution workspaces are disposable clones beneath `Execution:WorkspaceRoot`; never modify the configured source checkout.
+- Execution tools must use explicit argument lists and the documented allowlists. Never add unrestricted shell execution, Git commit, push, credential, or remote-mutation commands.
+- Patch and report paths exposed outside Infrastructure must remain opaque artifact references, never absolute filesystem paths.
 - Meaningful personality changes require a proposal, review, and human approval.
 - Keep project context separate from the global personality.
 

@@ -56,6 +56,8 @@ Provider connections, discovery, and deterministic Planner routing were pulled f
 
 ### 5. Coder and reviewer revision loop
 
+**Complete.** Execution is sequential and durably claimed; work occurs in isolated attempt workspaces; the Reviewer receives the real persisted patch; revisions are finite; and resolved runs stop at `ReadyForDelivery`.
+
 - filesystem, shell, repository, and diff tools
 - isolated work area
 - coding attempts
@@ -152,7 +154,7 @@ v0.1.0-core-pipeline
 
 Milestones 1–4 are complete. Planner completion added safe configuration readiness, structured failures, visible attempt history, and manual live-provider acceptance instructions.
 
-Milestone 5, the coder and reviewer revision loop, is next.
+Milestone 5 is complete. Milestone 6, Git and GitHub delivery, is next. Impersonate does not yet create commits, pushes, branches, or pull requests.
 
 The repository must be inspected before this expected state is accepted as fact.
 
