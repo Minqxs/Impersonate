@@ -156,6 +156,8 @@ Milestones 1–4 are complete. Planner completion added safe configuration readi
 
 Milestone 5 is complete. Milestone 6, Git and GitHub delivery, is next. Impersonate does not yet create commits, pushes, branches, or pull requests.
 
+Milestone 5.1 is complete: bounded repository-aware Planning, dependency/conflict ordering, rich task intelligence, versioned role-specific routing evidence, per-task previews, Reviewer diversity, and the read-only Brain decision projection are implemented. The full Brain UI remains deferred.
+
 The repository must be inspected before this expected state is accepted as fact.
 
 ## Last recorded repository position

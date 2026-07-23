@@ -52,6 +52,7 @@ public static class DependencyInjection
 
         services.AddHttpClient<ILanguageModelClient, AnthropicLanguageModelClient>((provider,client)=>{var options=provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PlannerOptions>>().Value;client.BaseAddress=new Uri("https://api.anthropic.com/");client.Timeout=TimeSpan.FromSeconds(options.TimeoutSeconds);var key=configuration["ANTHROPIC_API_KEY"]??configuration["Anthropic:ApiKey"];if(!string.IsNullOrWhiteSpace(key))client.DefaultRequestHeaders.Add("x-api-key",key);});
         services.AddScoped<IPlannerAgent, PlannerAgent>();
+        services.AddScoped<IPlanningRepositoryContextService,PlanningRepositoryContextService>();
         services.AddSingleton<IPlannerReadiness>(new PlannerReadinessService(configuration));
 
         return services;

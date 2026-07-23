@@ -14,6 +14,7 @@ Next milestone:
 
 - [x] Milestone 4: Planner agent integration
 - [x] Milestone 5: Coder and reviewer revision loop
+- [x] Milestone 5.1: Repository-aware planning and evidence-based model routing
 
 Next milestone: Git and GitHub delivery.
 
