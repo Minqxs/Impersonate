@@ -2,9 +2,9 @@ import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, FormCont
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { cancelRun, createRun, getAttemptDiff, getExecutionReadiness, getPipelineIntelligence, getProjectAiReadiness, getRun, getTimeline, listAvailableModels, listRuns, previewPlannerModel, runKeys, setTaskModelOverrides, startExecution, startPlanning, type ExecutionReadiness, type ModelOption, type ModelPreview, type PipelineRun } from '../api/runsApi';
+import { cancelRun, createRun, getAttemptDiff, getExecutionReadiness, getPipelineIntelligence, getProjectAiReadiness, getRun, getTimeline, listAvailableModels, listRuns, previewPlannerModel, retryExecution, runKeys, setTaskModelOverrides, startExecution, startPlanning, type ExecutionReadiness, type ModelOption, type ModelPreview, type PipelineRun } from '../api/runsApi';
 
-const terminal = ['ReadyForExecution', 'ReadyForDelivery', 'WaitingForClarification', 'Completed', 'CompletedWithSkippedTasks', 'Failed', 'Cancelled'];
+const terminal = ['ReadyForExecution', 'ReadyForDelivery', 'WaitingForClarification', 'WaitingForInfrastructure', 'Completed', 'CompletedWithSkippedTasks', 'Failed', 'Cancelled'];
 function State({ value }: { value: string }) { return <Chip size="small" label={value.replace(/([a-z])([A-Z])/g, '$1 $2')} color={value.includes('Completed') || value.startsWith('ReadyFor') || value === 'Succeeded' || value === 'Approved' ? 'success' : value === 'Failed' || value === 'ProviderFailed' ? 'error' : value === 'WaitingForClarification' || value === 'InvalidOutput' || value === 'TimedOut' || value === 'ChangesRequested' || value === 'Skipped' ? 'warning' : 'primary'} variant="outlined" />; }
 
 export function RunsPage() {
@@ -32,6 +32,7 @@ export function RunDetailPage() {
   const refresh = () => { queryClient.invalidateQueries({ queryKey: runKeys.detail(projectId, pipelineRunId) }); queryClient.invalidateQueries({ queryKey: runKeys.timeline(projectId, pipelineRunId) }); queryClient.invalidateQueries({ queryKey: runKeys.all(projectId) }); };
   const planning = useMutation({ mutationFn: () => startPlanning(projectId, pipelineRunId), onSuccess: refresh });
   const execution = useMutation({ mutationFn: () => startExecution(projectId, pipelineRunId), onSuccess: refresh });
+  const retry = useMutation({ mutationFn: () => retryExecution(projectId, pipelineRunId), onSuccess: refresh });
   const overrides = useMutation({ mutationFn: ({taskId,coder,reviewer}:{taskId:string;coder?:string;reviewer?:string}) => setTaskModelOverrides(projectId,pipelineRunId,taskId,coder,reviewer), onSuccess: () => { refresh(); executionReadiness.refetch(); } });
   const cancel = useMutation({ mutationFn: () => cancelRun(projectId, pipelineRunId), onSuccess: refresh });
   if (run.isPending) return <CircularProgress />; if (run.isError) return <Alert severity="error">{run.error.message}</Alert>;
@@ -42,6 +43,7 @@ export function RunDetailPage() {
     {planning.isError && <Alert severity="error">Planning could not start: {planning.error.message}</Alert>}
     {current.status === 'Planning' && <Alert icon={<CircularProgress size={18} />} severity="info">Planner execution is queued or active. This page refreshes automatically.</Alert>}
     {current.status === 'WaitingForClarification' && <Alert severity="warning"><strong>Clarification required.</strong> {current.stopReason} Create a new run with the requested detail; same-run clarification is not available yet.</Alert>}
+    {current.status === 'WaitingForInfrastructure' && <Alert severity="warning"><Stack spacing={1}><Typography fontWeight={700}>Execution is blocked because the isolated repository workspace could not be prepared.</Typography><Typography>Code: {current.infrastructureFailureCode??'workspace_preparation_failed'}</Typography><Typography>{current.infrastructureFailureMessage}</Typography><Typography>Affected task: {current.tasks.find(task=>task.id===current.infrastructureBlockedTaskId)?.title??'Unavailable'}</Typography><Stack direction="row" spacing={1}><Button variant="contained" onClick={()=>retry.mutate()} disabled={retry.isPending}>{retry.isPending?'Retrying…':'Retry execution'}</Button><Button component={Link} to={`/projects/${projectId}/health`}>Configuration health</Button></Stack>{retry.isError&&<Typography color="error">Retry failed: {retry.error.message}</Typography>}</Stack></Alert>}
     {current.status === 'Failed' && <Alert severity="error">Pipeline failed: {current.failureReason}</Alert>}
     {current.status === 'ReadyForExecution' && <IntelligentExecutionStart readiness={executionReadiness.data} loading={executionReadiness.isPending} models={models.data ?? []} tasks={current.tasks} onOverride={(taskId,coder,reviewer)=>overrides.mutate({taskId,coder,reviewer})} onStart={()=>execution.mutate()} starting={execution.isPending} />}
     {intelligence.data && <Alert severity="info"><strong>Decision projection:</strong> stage {intelligence.data.activeStage}; Reviewer diversity {intelligence.data.preferReviewerDiversity ? `enabled (weight ${intelligence.data.reviewerDiversityWeight})` : 'disabled'}. {intelligence.data.historicalOutcomeMessage}</Alert>}

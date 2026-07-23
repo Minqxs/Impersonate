@@ -36,6 +36,7 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/", () => Results.Ok(new { Name = "Impersonate API", Status = "Running" }));
 app.MapHealthChecks("/health");
 app.MapGet("/api/planner/readiness",(IPlannerReadiness readiness)=>Results.Ok(readiness.Get()));
+app.MapGet("/api/execution/readiness",async(IExecutionEnvironmentReadinessService readiness,CancellationToken ct)=>Results.Ok(await readiness.CheckAsync(ct)));
 var ai=app.MapGroup("/api/ai");
 ai.MapGet("/providers",async(IAiProviderConnectionService service,CancellationToken ct)=>Results.Ok(new{supportedProviders=Enum.GetValues<ProviderType>().Where(x=>x is ProviderType.Anthropic or ProviderType.OpenAI or ProviderType.GoogleGemini or ProviderType.OpenRouter),connections=await service.ListAsync(ct)}));
 ai.MapGet("/usage/models",async([Microsoft.AspNetCore.Mvc.FromQuery]int? days,[Microsoft.AspNetCore.Mvc.FromServices]IModelUsageService service,CancellationToken ct)=>Results.Ok(new{days=Math.Clamp(days??30,1,365),models=await service.GetPlanningUsageAsync(days??30,ct)}));
@@ -70,6 +71,7 @@ runs.MapGet("/{pipelineRunId:guid}/planning",async(Guid projectId,Guid pipelineR
 runs.MapGet("/{pipelineRunId:guid}/execution/readiness",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.ExecutionReadinessAsync(projectId,pipelineRunId,ct),Results.Ok));
 runs.MapGet("/{pipelineRunId:guid}/intelligence",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.IntelligenceAsync(projectId,pipelineRunId,ct),Results.Ok));
 runs.MapPost("/{pipelineRunId:guid}/execution/start",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.StartExecutionAsync(projectId,pipelineRunId,ct),r=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",r)));
+runs.MapPost("/{pipelineRunId:guid}/execution/retry",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.RetryExecutionAsync(projectId,pipelineRunId,ct),r=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",r)));
 runs.MapPut("/{pipelineRunId:guid}/tasks/{taskId:guid}/model-overrides",async(Guid projectId,Guid pipelineRunId,Guid taskId,TaskModelOverridesRequest request,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.SetTaskModelOverridesAsync(projectId,pipelineRunId,taskId,request,ct),Results.Ok));
 runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/attempts",async(Guid projectId,Guid pipelineRunId,Guid taskId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId) is{}task?Results.Ok(task.Attempts):Results.NotFound());
 runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/reviews",async(Guid projectId,Guid pipelineRunId,Guid taskId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId) is{}task?Results.Ok(task.Reviews):Results.NotFound());
