@@ -20,7 +20,7 @@ Task
 
 ## Model registry metadata
 
-A model record eventually includes:
+A versioned local capability profile includes:
 
 - provider;
 - model identifier;
@@ -72,7 +72,9 @@ Using different models or configurations can reduce shared blind spots.
 
 ## Current execution behavior
 
-Planner, Coder, and Reviewer are routed independently. Coder and Reviewer decisions are persisted with pipeline-run, planned-task, and task-attempt linkage. A task may override either discovered model before it starts; disconnected, unavailable, or incompatible overrides are rejected. The Coder tool protocol is provider-neutral, so Infrastructure translates the same structured loop through any configured provider adapter instead of depending on native provider tool calls.
+Planner, Coder, and Reviewer use separate hard requirements. Eligible models are scored from actual components: role and task fit, repository stack, complexity/risk, context, tools, structured output, cost/latency policy, preferred provider, and optional Reviewer diversity. Decisions persist the rich task profile, catalog metadata version, component breakdown, explanation, and up to three ranked alternatives. Unknown models use conservative catalog metadata and never receive invented quality claims.
+
+Execution readiness evaluates every pending task. A blank task override means the displayed automatic provider/model; overrides affect only that task. Reviewer diversity adds a visible bonus for a suitable different model/provider, but never makes an incompatible model eligible. Selecting the same model remains valid and receives a specific explanation.
 
 ## Learning from outcomes
 
@@ -88,4 +90,4 @@ Capture:
 - cost;
 - latency.
 
-Do not allow one successful or failed task to silently rewrite routing policy. Produce reviewed routing recommendations.
+Do not allow one successful or failed task to silently rewrite routing policy. Historical performance requires at least 10 samples before contributing to a score; below that threshold the UI says it was not used. Produce reviewed routing recommendations.

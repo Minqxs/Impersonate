@@ -63,7 +63,7 @@ npm run build
 - Keep provider-specific types in Infrastructure; never log, return, or commit API keys.
 - Version planner prompts and record provider, model, and prompt version for every finite attempt.
 - Keep execution project scoped, never duplicate tasks across retries, and atomically persist successful tasks and state while retaining failed attempts.
-- The planner must not claim repository inspection until repository tools exist.
+- The planner may claim only files present in its bounded, read-only repository snapshot; fabricated evidence is invalid output.
 - Planner tasks are ordered and reviewable; `ReadyForExecution` requires persisted valid tasks.
 - Planning retries are finite and failed attempts remain visible.
 - Both API and Worker require matching provider, model, and credential configuration.
@@ -71,4 +71,5 @@ npm run build
 - Do not begin coder or reviewer execution while completing the planner milestone.
 - New sessions read `docs/development/current-state.md`; milestone completion updates it and the roadmap.
 - Provider access is user-managed; discovery and routing are system-managed. Automatic selection is the default, and persisted decisions are authoritative for Workers.
+- Routing compatibility is role-specific. Persist the task profile, metadata version, score components, alternatives, and Reviewer-diversity evidence for each decision.
 - Run UI readiness is project scoped and feature-specific; never gate routed planning on the legacy global environment-readiness endpoint.

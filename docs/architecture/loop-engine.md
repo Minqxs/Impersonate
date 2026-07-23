@@ -7,3 +7,5 @@ Aggregate methods enforce transitions, quality gates, stopping conditions, and t
 This is not event sourcing: current state is persisted directly and events provide an append-only operational timeline. Future agent adapters can request valid progression without owning workflow rules.
 
 Milestone 5 adds `ReadyForExecution → Executing → ReadyForDelivery`. A serializable repository operation claims one eligible task with an expiring lease. Coding, Reviewing, and Revising stages are explicit domain transitions. Earlier review decisions remain historical while the newest attempt review is current. When all tasks are Approved or Skipped and at least one is Approved, the loop moves to Committing without marking the run Completed. Delivery remains a separate milestone.
+
+Milestone 5.1 enriches Planning with a bounded repository snapshot and a validated dependency DAG. A deterministic topological ordering prioritises shared contracts, then conflict and architectural-layer heuristics while always respecting dependencies. Original and final order plus adjustment reasons are persisted. Execution remains sequential; parallel task execution is not implemented.

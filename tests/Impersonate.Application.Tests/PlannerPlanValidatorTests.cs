@@ -1,4 +1,6 @@
 using Impersonate.Application.Planning;
+using Impersonate.Application;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 namespace Impersonate.Application.Tests;
 public sealed class PlannerPlanValidatorTests
@@ -9,4 +11,7 @@ public sealed class PlannerPlanValidatorTests
  [Fact] public void Rejects_duplicate_titles_and_task_limit(){var plan=new PlannerPlan("Summary",true,[],[new(1,"Same","First",["One"]),new(2,"same","Second",["Two"])],null,null);var errors=PlannerPlanValidator.Validate(plan,1);Assert.Contains(errors,x=>x.Contains("Maximum"));Assert.Contains(errors,x=>x.Contains("unique"));}
  [Fact] public void Rejects_missing_summary_placeholders_and_execution_claims(){var plan=new PlannerPlan("",true,[],[new(1,"TODO endpoint","I inspected the repository and ran the tests.",["TBD"])],null,null);var errors=PlannerPlanValidator.Validate(plan,12);Assert.Contains(errors,x=>x.Contains("summary"));Assert.Contains(errors,x=>x.Contains("Placeholder"));Assert.Contains(errors,x=>x.Contains("inspection"));}
  [Fact] public void Rejects_missing_acceptance_criteria(){var plan=new PlannerPlan("Summary",true,[],[new(1,"Add endpoint","Add the endpoint.",[])],null,null);Assert.Contains(PlannerPlanValidator.Validate(plan,12),x=>x.Contains("Acceptance criteria"));}
+ [Fact] public void Rejects_dependency_cycles(){var tasks=new[]{new PlannerTask(1,"Contract","Contract",["Done"],[2],["Domain"],"DomainModel","Moderate","Low","First contract",[],true),new PlannerTask(2,"Consumer","Consumer",["Done"],[1],["Api"],"ApiEndpoint","Moderate","Low","Consumes contract",[],false)};var errors=PlannerPlanValidator.Validate(new("Summary",true,[],tasks,null,null),12,new HashSet<string>());Assert.Contains(errors,x=>x.Contains("cycle",StringComparison.OrdinalIgnoreCase));}
+ [Fact] public void Rejects_fabricated_repository_evidence(){var task=new PlannerTask(1,"Change domain","Change domain",["Done"],[],["Domain"],"DomainModel","Moderate","Low","Establish contract",["src/missing.cs"],true);var errors=PlannerPlanValidator.Validate(new("Summary",true,[],[task],null,null),12,new HashSet<string>{"src/existing.cs"});Assert.Contains(errors,x=>x.Contains("outside the planning snapshot"));}
+ [Fact] public void Deterministic_order_places_shared_contract_before_independent_consumer(){var services=new Microsoft.Extensions.DependencyInjection.ServiceCollection().AddApplication().BuildServiceProvider();var order=services.GetRequiredService<IExecutionOrderService>();var tasks=new[]{new PlannerTask(1,"UI","UI",["Done"],[],["FrontendUi"],"FrontendUi","Low","Low","After contract",[],false),new PlannerTask(2,"Contract","Contract",["Done"],[],["Domain"],"DomainModel","Moderate","High","Shared contract",[],true)};var result=order.Order(tasks);Assert.True(result.Succeeded);Assert.Equal("Contract",result.Tasks[0].Task.Title);Assert.All(result.Tasks,x=>Assert.True(x.OrderAdjusted));}
 }

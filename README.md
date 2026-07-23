@@ -1,10 +1,10 @@
 # Impersonate
 
-Impersonate is a project-aware, personality-guided engineering system. The repository currently delivers structured planning plus a sequential Coder/Reviewer revision loop that produces reviewed patch artifacts in isolated workspaces.
+Impersonate is a project-aware, personality-guided engineering system. The repository currently delivers repository-aware dependency planning plus a sequential Coder/Reviewer revision loop that produces reviewed patch artifacts in isolated workspaces.
 
 ## Current milestone
 
-Planner agent integration is complete. The next planned milestone is the coder and reviewer revision loop.
+Repository-aware planning and evidence-based model routing are implemented. Git and pull-request delivery remain deferred.
 
 ## Technology stack
 
@@ -92,7 +92,7 @@ $env:ANTHROPIC_API_KEY="<api-key>"
 dotnet run --project src/backend/Impersonate.Api
 ```
 
-In a separate PowerShell terminal, set the same three variables and run `dotnet run --project src/backend/Impersonate.Worker`. User secrets are also supported through `Agents:Planner:Provider`, `Agents:Planner:Model`, and `Anthropic:ApiKey` for both host projects. `GET /api/planner/readiness` reports only whether provider, model, and credentials are present; it never returns the credential. Planning returns a structured unavailable response when configuration is missing. The planner receives project metadata but does not inspect repository files.
+In a separate PowerShell terminal, set the same three variables and run `dotnet run --project src/backend/Impersonate.Worker`. User secrets are also supported through `Agents:Planner:Provider`, `Agents:Planner:Model`, and `Anthropic:ApiKey` for both host projects. `GET /api/planner/readiness` reports only whether provider, model, and credentials are present; it never returns the credential. Planning returns a structured unavailable response when configuration is missing. `planner-v2` receives a bounded, read-only, isolated repository snapshot; `planner-v1` remains readable for historical runs.
 
 ## Pipeline and loop foundation
 
@@ -102,7 +102,7 @@ The default policy allows three revision attempts after the initial coding attem
 
 ## AI provider connections and routing
 
-Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate routes Planner, Coder, and Reviewer independently. Task-level Coder and Reviewer overrides are optional and capability-validated. Environment Anthropic configuration remains a legacy Planner fallback. API and Worker must share `Ai:DataProtectionKeyPath`.
+Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate routes Planner, Coder, and Reviewer with role-specific compatibility, versioned capability metadata, persisted score components, ranked alternatives, and optional Reviewer diversity. Every pending task is previewed and task-level overrides are capability-validated. Historical outcomes are not scored below the minimum sample size of 10. Environment Anthropic configuration remains a legacy Planner fallback. API and Worker must share `Ai:DataProtectionKeyPath`.
 
 Execution clones the configured public GitHub HTTPS repository beneath `Execution:WorkspaceRoot` (development default `%LOCALAPPDATA%\Impersonate\workspaces`) and stores opaque patch/report artifacts beneath `Execution:ArtifactRoot`. Production requires both roots explicitly. Commands and repository paths are restricted as described in [execution security](docs/architecture/execution-security.md). Private-repository authentication, commits, pushes, branches, and pull-request delivery are not implemented.
 
