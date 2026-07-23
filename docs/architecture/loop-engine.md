@@ -5,3 +5,5 @@
 Aggregate methods enforce transitions, quality gates, stopping conditions, and terminal protection. Application orchestration loads a run under its project scope, invokes domain behaviour, appends an ordered audit event, and saves atomically. Controllers never assign state. Approval gates commit; changes requested gates revision; exhausted retries escalate through a visible reason and skip-or-fail policy.
 
 This is not event sourcing: current state is persisted directly and events provide an append-only operational timeline. Future agent adapters can request valid progression without owning workflow rules.
+
+Milestone 5 adds `ReadyForExecution → Executing → ReadyForDelivery`. A serializable repository operation claims one eligible task with an expiring lease. Coding, Reviewing, and Revising stages are explicit domain transitions. Earlier review decisions remain historical while the newest attempt review is current. When all tasks are Approved or Skipped and at least one is Approved, the loop moves to Committing without marking the run Completed. Delivery remains a separate milestone.

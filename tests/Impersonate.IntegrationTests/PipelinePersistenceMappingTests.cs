@@ -24,4 +24,22 @@ public sealed class PipelinePersistenceMappingTests
         var task=db.ChangeTracker.Entries<PlannedTask>().Single();
         Assert.Equal(EntityState.Added,task.State);
     }
+
+    [Fact]
+    public void Starting_coding_on_a_tracked_run_marks_the_application_generated_attempt_as_added()
+    {
+        var options=new DbContextOptionsBuilder<ImpersonateDbContext>().UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=MappingOnly;Trusted_Connection=True").Options;
+        using var db=new ImpersonateDbContext(options);var run=PipelineRun.Create(Guid.NewGuid(),"Implement a feature");run.StartPlanning();run.AddTask(1,"Implement","Do the work");run.MarkReadyForExecution();run.StartExecution();db.Attach(run);var now=DateTimeOffset.UtcNow;var task=run.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);db.ChangeTracker.DetectChanges();
+        var attempt=db.ChangeTracker.Entries<TaskAttempt>().Single();
+        Assert.Equal(EntityState.Added,attempt.State);Assert.NotEqual(Guid.Empty,attempt.Entity.Id);Assert.Equal(task.Id,attempt.Entity.PlannedTaskId);
+    }
+
+    [Fact]
+    public void Reviewing_a_tracked_attempt_marks_the_application_generated_decision_as_added()
+    {
+        var options=new DbContextOptionsBuilder<ImpersonateDbContext>().UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=MappingOnly;Trusted_Connection=True").Options;
+        using var db=new ImpersonateDbContext(options);var run=PipelineRun.Create(Guid.NewGuid(),"Implement a feature");run.StartPlanning();run.AddTask(1,"Implement","Do the work");run.MarkReadyForExecution();run.StartExecution();var now=DateTimeOffset.UtcNow;var task=run.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);task.CompleteAttempt("done");run.MoveTaskToReview(task);db.Attach(run);run.RecordReview(task,ReviewDecisionType.Approved,"approved");db.ChangeTracker.DetectChanges();
+        var review=db.ChangeTracker.Entries<ReviewDecision>().Single();
+        Assert.Equal(EntityState.Added,review.State);Assert.NotEqual(Guid.Empty,review.Entity.Id);
+    }
 }

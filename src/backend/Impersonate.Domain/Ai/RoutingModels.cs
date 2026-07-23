@@ -23,6 +23,8 @@ public sealed class ModelSelectionDecision
     public Guid Id { get; private set; }
     public Guid ProjectId { get; private set; }
     public Guid? PipelineRunId { get; private set; }
+    public Guid? PlannedTaskId { get; private set; }
+    public Guid? TaskAttemptId { get; private set; }
     public AgentRole Role { get; private set; }
     public Guid? ProviderConnectionId { get; private set; }
     public Guid? DiscoveredModelId { get; private set; }
@@ -35,5 +37,5 @@ public sealed class ModelSelectionDecision
     public string CandidateSummaryJson { get; private set; } = "[]";
     public Guid? EscalatedFromDecisionId { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
-    public static ModelSelectionDecision Create(Guid project, Guid? run, AgentRole role, Guid? connection, Guid? discovered, string provider, string model, ModelSelectionSource source, int score, string profile, string explanation, string candidates, Guid? prior = null) => new() { Id = Guid.NewGuid(), ProjectId = project, PipelineRunId = run, Role = role, ProviderConnectionId = connection, DiscoveredModelId = discovered, Provider = provider, Model = model, SelectionSource = source, Score = score, TaskProfileJson = profile, Explanation = explanation, CandidateSummaryJson = candidates, EscalatedFromDecisionId = prior, CreatedAtUtc = DateTimeOffset.UtcNow };
+    public static ModelSelectionDecision Create(Guid project, Guid? run, AgentRole role, Guid? connection, Guid? discovered, string provider, string model, ModelSelectionSource source, int score, string profile, string explanation, string candidates, Guid? prior = null, Guid? plannedTaskId = null, Guid? taskAttemptId = null) => new() { Id = Guid.NewGuid(), ProjectId = project, PipelineRunId = run, PlannedTaskId = plannedTaskId, TaskAttemptId = taskAttemptId, Role = role, ProviderConnectionId = connection, DiscoveredModelId = discovered, Provider = provider, Model = model, SelectionSource = source, Score = score, TaskProfileJson = profile, Explanation = explanation, CandidateSummaryJson = candidates, EscalatedFromDecisionId = prior, CreatedAtUtc = DateTimeOffset.UtcNow };
 }

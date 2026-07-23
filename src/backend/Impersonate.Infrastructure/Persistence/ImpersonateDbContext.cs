@@ -11,6 +11,8 @@ public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> 
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<PipelineRun> PipelineRuns => Set<PipelineRun>();
     public DbSet<PlanningAttempt> PlanningAttempts => Set<PlanningAttempt>();
+    public DbSet<TaskAttempt> TaskAttempts => Set<TaskAttempt>();
+    public DbSet<ReviewDecision> ReviewDecisions => Set<ReviewDecision>();
     public DbSet<AiProviderConnection> AiProviderConnections => Set<AiProviderConnection>();
     public DbSet<DiscoveredModel> DiscoveredModels => Set<DiscoveredModel>();
     public DbSet<ProjectAiRoutingPolicy> ProjectAiRoutingPolicies => Set<ProjectAiRoutingPolicy>();

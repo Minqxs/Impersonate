@@ -1,6 +1,6 @@
 # Impersonate
 
-Impersonate is a project-aware, personality-guided engineering system. The repository currently delivers project workspaces, pipeline/loop foundations, and the first model-powered workflow: structured planning.
+Impersonate is a project-aware, personality-guided engineering system. The repository currently delivers structured planning plus a sequential Coder/Reviewer revision loop that produces reviewed patch artifacts in isolated workspaces.
 
 ## Current milestone
 
@@ -102,7 +102,9 @@ The default policy allows three revision attempts after the initial coding attem
 
 ## AI provider connections and routing
 
-Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate profiles Planner work and selects an eligible model automatically. Manual choice is optional and advanced. Environment Anthropic configuration remains a legacy fallback. API and Worker must share `Ai:DataProtectionKeyPath`. Only Planner executes today.
+Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate routes Planner, Coder, and Reviewer independently. Task-level Coder and Reviewer overrides are optional and capability-validated. Environment Anthropic configuration remains a legacy Planner fallback. API and Worker must share `Ai:DataProtectionKeyPath`.
+
+Execution clones the configured public GitHub HTTPS repository beneath `Execution:WorkspaceRoot` (development default `%LOCALAPPDATA%\Impersonate\workspaces`) and stores opaque patch/report artifacts beneath `Execution:ArtifactRoot`. Production requires both roots explicitly. Commands and repository paths are restricted as described in [execution security](docs/architecture/execution-security.md). Private-repository authentication, commits, pushes, branches, and pull-request delivery are not implemented.
 
 Created run details use project-scoped AI readiness and preview the feature-specific provider, model, and routing explanation before enabling **Start Planning**. The global `/api/planner/readiness` endpoint reports legacy environment fallback health only.
 

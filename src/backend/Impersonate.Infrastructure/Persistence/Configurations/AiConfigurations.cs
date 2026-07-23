@@ -19,7 +19,7 @@ internal sealed class ProjectAiRoutingPolicyConfiguration : IEntityTypeConfigura
 }
 internal sealed class ModelSelectionDecisionConfiguration : IEntityTypeConfiguration<ModelSelectionDecision>
 {
-    public void Configure(EntityTypeBuilder<ModelSelectionDecision> b) { b.ToTable("ModelSelectionDecisions"); b.HasKey(x => x.Id); b.Property(x => x.Provider).HasMaxLength(50); b.Property(x => x.Model).HasMaxLength(300); b.Property(x => x.TaskProfileJson).HasMaxLength(4000); b.Property(x => x.Explanation).HasMaxLength(2000); b.Property(x => x.CandidateSummaryJson).HasMaxLength(8000); b.HasIndex(x => new { x.ProjectId, x.PipelineRunId }); }
+    public void Configure(EntityTypeBuilder<ModelSelectionDecision> b) { b.ToTable("ModelSelectionDecisions"); b.HasKey(x => x.Id); b.Property(x => x.Id).ValueGeneratedNever(); b.Property(x => x.Provider).HasMaxLength(50); b.Property(x => x.Model).HasMaxLength(300); b.Property(x => x.TaskProfileJson).HasMaxLength(4000); b.Property(x => x.Explanation).HasMaxLength(2000); b.Property(x => x.CandidateSummaryJson).HasMaxLength(8000); b.HasIndex(x => new { x.ProjectId, x.PipelineRunId }); b.HasIndex(x => new { x.PlannedTaskId, x.TaskAttemptId, x.Role }); }
 }
 internal sealed class ProviderCredentialSecretConfiguration : IEntityTypeConfiguration<ProviderCredentialSecret>
 {
