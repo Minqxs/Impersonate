@@ -28,13 +28,22 @@ describe('planner completion UI', () => {
   });
 
   it('renders ordered tasks, attempt failures, and terminal state without polling controls', async () => {
-    const completed = { ...run, status: 'ReadyForExecution', tasks: [{ id: 'two', sequence: 2, title: 'Expose API', description: 'Add operations.', acceptanceCriteria: ['Endpoints are scoped.'], status: 'Pending', attemptCount: 0, revisionCount: 0 }, { id: 'one', sequence: 1, title: 'Add domain', description: 'Add persistence.', acceptanceCriteria: ['Notes persist.'], status: 'Pending', attemptCount: 0, revisionCount: 0 }], planningAttempts: [{ attemptNumber: 1, provider: 'Anthropic', model: 'configured-model', promptVersion: 'planner-v1', status: 'InvalidOutput', startedAtUtc: '2026-07-20T00:00:00Z', completedAtUtc: '2026-07-20T00:00:01Z', failureCode: 'invalid_output', failureMessage: 'Sequences must be contiguous from 1.' }, { attemptNumber: 2, provider: 'Anthropic', model: 'configured-model', promptVersion: 'planner-v1', status: 'Succeeded', startedAtUtc: '2026-07-20T00:00:02Z', completedAtUtc: '2026-07-20T00:00:03Z' }] };
-    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/timeline') ? response([]) : response(completed));
+    const completed = { ...run, status: 'ReadyForExecution', tasks: [{ id: 'two', sequence: 2, title: 'Expose API', description: 'Add operations.', acceptanceCriteria: ['Endpoints are scoped.'], status: 'Pending', revisionCount: 0, maximumRevisionAttempts: 3, attempts: [], reviews: [] }, { id: 'one', sequence: 1, title: 'Add domain', description: 'Add persistence.', acceptanceCriteria: ['Notes persist.'], status: 'Pending', revisionCount: 0, maximumRevisionAttempts: 3, attempts: [], reviews: [] }], planningAttempts: [{ attemptNumber: 1, provider: 'Anthropic', model: 'configured-model', promptVersion: 'planner-v1', status: 'InvalidOutput', startedAtUtc: '2026-07-20T00:00:00Z', completedAtUtc: '2026-07-20T00:00:01Z', failureCode: 'invalid_output', failureMessage: 'Sequences must be contiguous from 1.' }, { attemptNumber: 2, provider: 'Anthropic', model: 'configured-model', promptVersion: 'planner-v1', status: 'Succeeded', startedAtUtc: '2026-07-20T00:00:02Z', completedAtUtc: '2026-07-20T00:00:03Z' }] };
+    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/execution/readiness') ? response({ ready: true, coder: { ready: true, provider: 'OpenAI', model: 'coder-model', selectionSource: 'AutomaticRouting' }, reviewer: { ready: true, provider: 'OpenAI', model: 'reviewer-model', selectionSource: 'AutomaticRouting' }, blockers: [] }) : String(input).endsWith('/api/ai/providers') ? response({ connections: [] }) : String(input).endsWith('/timeline') ? response([]) : response(completed));
     renderDetail();
-    expect(await screen.findByText('The task plan has been generated. Coding-agent execution will be introduced in the next milestone.')).toBeInTheDocument();
+    expect(await screen.findByText('Coder and Reviewer routing is ready.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start Execution' })).toBeEnabled();
     const headings = screen.getAllByRole('heading', { level: 6 }).map(element => element.textContent);
     expect(headings.indexOf('1. Add domain')).toBeLessThan(headings.indexOf('2. Expose API'));
     expect(screen.getByText(/invalid_output: Sequences/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start Planning' })).not.toBeInTheDocument();
+  });
+
+  it('shows the honest ReadyForDelivery handoff without claiming commit or pull request creation', async () => {
+    const delivered = { ...run, status: 'ReadyForDelivery', loop: { ...run.loop, currentStage: 'Committing' }, tasks: [], planningAttempts: [] };
+    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/timeline') ? response([]) : response(delivered));
+    renderDetail();
+    expect(await screen.findByText(/Git commit and pull-request delivery will be introduced in Milestone 6/)).toBeInTheDocument();
+    expect(screen.queryByText(/code was committed/i)).not.toBeInTheDocument();
   });
 });

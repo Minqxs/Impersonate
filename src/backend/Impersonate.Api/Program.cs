@@ -7,6 +7,7 @@ using Impersonate.Domain.Projects;
 using Impersonate.Infrastructure;
 using Impersonate.Application.Ai;
 using Impersonate.Domain.Ai;
+using Impersonate.Application.Execution;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -66,9 +67,15 @@ runs.MapPost("/{pipelineRunId:guid}/planning/start",async(Guid projectId,Guid pi
     return ToResult(await service.StartPlanningAsync(projectId,pipelineRunId,ct),r=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}/planning",r));
 });
 runs.MapGet("/{pipelineRunId:guid}/planning",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct)) is{}r?Results.Ok(r):Results.NotFound());
+runs.MapGet("/{pipelineRunId:guid}/execution/readiness",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.ExecutionReadinessAsync(projectId,pipelineRunId,ct),Results.Ok));
+runs.MapPost("/{pipelineRunId:guid}/execution/start",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.StartExecutionAsync(projectId,pipelineRunId,ct),r=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",r)));
+runs.MapPut("/{pipelineRunId:guid}/tasks/{taskId:guid}/model-overrides",async(Guid projectId,Guid pipelineRunId,Guid taskId,TaskModelOverridesRequest request,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.SetTaskModelOverridesAsync(projectId,pipelineRunId,taskId,request,ct),Results.Ok));
+runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/attempts",async(Guid projectId,Guid pipelineRunId,Guid taskId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId) is{}task?Results.Ok(task.Attempts):Results.NotFound());
+runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/reviews",async(Guid projectId,Guid pipelineRunId,Guid taskId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId) is{}task?Results.Ok(task.Reviews):Results.NotFound());
+runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/attempts/{attemptId:guid}/diff",async(Guid projectId,Guid pipelineRunId,Guid taskId,Guid attemptId,IPipelineRunService service,IExecutionArtifactStore artifacts,CancellationToken ct)=>{var task=(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId);var attempt=task?.Attempts.SingleOrDefault(x=>x.Id==attemptId);if(attempt?.PatchArtifactReference is null)return Results.NotFound();try{return Results.Text(await artifacts.ReadTextAsync(attempt.PatchArtifactReference,200_000,ct),"text/plain; charset=utf-8");}catch(FileNotFoundException){return Results.NotFound();}});
 runs.MapPost("/{pipelineRunId:guid}/cancel",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.CancelAsync(projectId,pipelineRunId,ct),Results.Ok));
 app.Run();
-static IResult ToResult<T>(PipelineOperationResult<T> result,Func<T,IResult> success)=>result.Succeeded?success(result.Value!):result.Code switch{"not_found"=>Results.NotFound(new ApiError(result.Code,result.Error!)),"invalid_transition"=>Results.Conflict(new ApiError(result.Code,result.Error!)),"project_off"=>Results.Conflict(new ApiError(result.Code,result.Error!)),_=>Results.BadRequest(new ApiError(result.Code??"validation",result.Error!))};
+static IResult ToResult<T>(PipelineOperationResult<T> result,Func<T,IResult> success)=>result.Succeeded?success(result.Value!):result.Code switch{"not_found"=>Results.NotFound(new ApiError(result.Code,result.Error!)),"invalid_transition" or "project_off" or "conflict" or "execution_not_ready"=>Results.Conflict(new ApiError(result.Code,result.Error!)),_=>Results.BadRequest(new ApiError(result.Code??"validation",result.Error!))};
 public sealed record ChangeStatusRequest(ProjectStatus Status);
 public sealed record ApiError(string Code,string Message);
 public sealed record ModelSelectionPreviewRequest(AgentRole Role,string Description,Guid? ManualModelOverrideId);
