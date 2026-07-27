@@ -11,3 +11,6 @@ Repository commands run with an explicit sanitized environment. Windows receives
 When every task is Approved or Skipped and at least one is Approved, the run reaches `ReadyForDelivery` and the loop stage becomes Committing. Git commits, branches, pushes, GitHub access, and pull-request delivery are not implemented; those remain Milestone 6.
 
 The project-scoped UI displays the dependency execution plan, ordering and conflict evidence, per-task automatic model selections, score details, alternatives, task-scoped overrides, and a safe Brain decision projection. The full Brain visualisation remains deferred. `GET /api/projects/{projectId}/pipeline-runs/{runId}/intelligence` exposes structured evidence without credentials, absolute paths, or hidden reasoning.
+# Capability-aware routing update
+
+The routing core now uses catalogue `catalog-2026-07-v2`, exact provider-aware model identities, conservative unknown-model handling, task-specific quality floors, meaningful Quality/Balanced/Economy scoring, canonical Reviewer diversity, and OpenAI endpoint-aware request construction. Milestone 6 has not started.

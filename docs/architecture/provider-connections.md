@@ -11,3 +11,8 @@ Validation exposes safe authentication or availability messages. Synchronisation
 Routing profiles the role and request deterministically, applies availability, capability, context, preview, and project-provider filters, then scores remaining candidates. The decision and explanation are persisted before planning. The Worker consumes that decision. Manual overrides use the same eligibility checks. Environment configuration is temporary compatibility behavior.
 
 The run page obtains readiness from `/api/projects/{projectId}/ai/readiness` and previews the actual feature request through the project model-selection endpoint. Query keys include the project and request. Provider mutations invalidate readiness and preview caches. `/api/planner/readiness` is retained only for legacy environment health checks.
+# Availability and compatibility
+
+Provider discovery is an availability inventory, not evidence of reasoning or agentic tool quality. Discovered IDs are joined to reviewed capability and endpoint metadata. Unknown IDs remain visible but conservative; an available model can therefore be endpoint-incompatible or below the task quality floor without implying that the credential lacks access.
+
+For troubleshooting, synchronise the connection after provider-side access changes and inspect the routing explanation. “Known stronger model is not available to this provider connection” means the catalogue knows the model but the connected provider did not return it. Credentials and raw provider responses are never included in these explanations.
