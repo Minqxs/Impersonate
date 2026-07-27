@@ -25,11 +25,11 @@ internal sealed class AnthropicLanguageModelClient(HttpClient http):ILanguageMod
 
 internal sealed class PlannerAgent(ILanguageModelClient client,IOptions<PlannerOptions> options,IEnumerable<Impersonate.Application.Ai.IAiProviderAdapter> adapters,Impersonate.Application.Ai.IProviderCredentialStore credentials):IPlannerAgent
 {
- private static readonly JsonSerializerOptions Json=new(){PropertyNameCaseInsensitive=true};
+ private static readonly JsonSerializerOptions Json=new(){PropertyNameCaseInsensitive=true,PropertyNamingPolicy=JsonNamingPolicy.CamelCase};
  public async Task<PlannerAgentResult> PlanAsync(PlannerAgentRequest request,CancellationToken ct)
  {
   var prompt=await LoadPromptAsync(request.PromptVersion,ct);
-  var context=JsonSerializer.Serialize(new{project=new{request.ProjectName,request.ProjectDescription,request.DefaultBranch},request.FeatureRequest,constraints=new{request.MaximumTasks,repositoryInspectionAvailable=request.RepositoryContext is not null},repositoryContext=request.RepositoryContext is null?null:new{request.RepositoryContext.Tree,request.RepositoryContext.RelevantFiles,request.RepositoryContext.Languages,request.RepositoryContext.Frameworks,request.RepositoryContext.Layers,request.RepositoryContext.TestLocations,request.RepositoryContext.MigrationLocations,request.RepositoryContext.Summary},request.CorrectionContext});
+  var context=PlannerRequestPayload.Build(request);
   var schema=request.PromptVersion=="planner-v2"?PlannerV2Schema:PlannerV1Schema;
   Impersonate.Application.Planning.LanguageModelResponse response;
   if(request.ProviderConnectionId is{} connectionId&&request.RoutedProvider is{} provider&&!string.IsNullOrWhiteSpace(request.RoutedModel))
