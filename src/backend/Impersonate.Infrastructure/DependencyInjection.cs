@@ -31,6 +31,7 @@ public static class DependencyInjection
             services.AddDbContext<ImpersonateDbContext>(options => options.UseSqlServer(connectionString));
             services.AddScoped<IProjectRepository, EfProjectRepository>();
             services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
+            services.AddScoped<IExecutionInvocationStore, EfExecutionInvocationStore>();
             services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
             services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();
             services.AddScoped<IModelUsageService, ModelUsageService>();

@@ -42,4 +42,12 @@ public sealed class PipelinePersistenceMappingTests
         var review=db.ChangeTracker.Entries<ReviewDecision>().Single();
         Assert.Equal(EntityState.Added,review.State);Assert.NotEqual(Guid.Empty,review.Entity.Id);
     }
+
+    [Fact]
+    public void Execution_invocation_uses_an_application_generated_identifier()
+    {
+        var options=new DbContextOptionsBuilder<ImpersonateDbContext>().UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=MappingOnly;Trusted_Connection=True").Options;
+        using var db=new ImpersonateDbContext(options);var invocation=ExecutionInvocation.Record(Guid.NewGuid(),1,"Coder","OpenAI","gpt-4.1",null,"coder-v1","request",10,5,"complete",0,1,0,0,0,false,"coder_protocol_failed","Premature completion.",DateTimeOffset.UtcNow,DateTimeOffset.UtcNow);db.ExecutionInvocations.Add(invocation);db.ChangeTracker.DetectChanges();
+        Assert.Equal(EntityState.Added,db.Entry(invocation).State);Assert.NotEqual(Guid.Empty,invocation.Id);Assert.Equal(Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never,db.Model.FindEntityType(typeof(ExecutionInvocation))!.FindProperty(nameof(ExecutionInvocation.Id))!.ValueGenerated);
+    }
 }
