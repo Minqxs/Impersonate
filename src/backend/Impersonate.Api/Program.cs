@@ -11,6 +11,7 @@ using Impersonate.Application.Execution;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<ITaskControlService,TaskControlService>();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
@@ -72,6 +73,8 @@ runs.MapGet("/{pipelineRunId:guid}/execution/readiness",async(Guid projectId,Gui
 runs.MapGet("/{pipelineRunId:guid}/intelligence",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.IntelligenceAsync(projectId,pipelineRunId,ct),Results.Ok));
 runs.MapPost("/{pipelineRunId:guid}/execution/start",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.StartExecutionAsync(projectId,pipelineRunId,ct),r=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",r)));
 runs.MapPost("/{pipelineRunId:guid}/execution/retry",async(Guid projectId,Guid pipelineRunId,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.RetryExecutionAsync(projectId,pipelineRunId,ct),r=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",r)));
+runs.MapPost("/{pipelineRunId:guid}/tasks/{taskId:guid}/execution/start",async(Guid projectId,Guid pipelineRunId,Guid taskId,ITaskControlService service,CancellationToken ct)=>ToResult(await service.ExecuteAsync(projectId,pipelineRunId,taskId,ct),value=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",value)));
+runs.MapPost("/{pipelineRunId:guid}/tasks/{taskId:guid}/execution/retry",async(Guid projectId,Guid pipelineRunId,Guid taskId,ITaskControlService service,CancellationToken ct)=>ToResult(await service.ExecuteAsync(projectId,pipelineRunId,taskId,ct),value=>Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}",value)));
 runs.MapPut("/{pipelineRunId:guid}/tasks/{taskId:guid}/model-overrides",async(Guid projectId,Guid pipelineRunId,Guid taskId,TaskModelOverridesRequest request,IPipelineRunService service,CancellationToken ct)=>ToResult(await service.SetTaskModelOverridesAsync(projectId,pipelineRunId,taskId,request,ct),Results.Ok));
 runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/attempts",async(Guid projectId,Guid pipelineRunId,Guid taskId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId) is{}task?Results.Ok(task.Attempts):Results.NotFound());
 runs.MapGet("/{pipelineRunId:guid}/tasks/{taskId:guid}/reviews",async(Guid projectId,Guid pipelineRunId,Guid taskId,IPipelineRunService service,CancellationToken ct)=>(await service.GetAsync(projectId,pipelineRunId,ct))?.Tasks.SingleOrDefault(x=>x.Id==taskId) is{}task?Results.Ok(task.Reviews):Results.NotFound());
