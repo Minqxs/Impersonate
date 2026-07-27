@@ -66,6 +66,8 @@ npm run build
 - Version planner prompts and record provider, model, and prompt version for every finite attempt.
 - Keep execution project scoped, never duplicate tasks across retries, and atomically persist successful tasks and state while retaining failed attempts.
 - The planner may claim only files present in its bounded, read-only repository snapshot; fabricated evidence is invalid output.
+- Planner v2 evidence must be copied exactly from `allowedRepositoryEvidencePaths`; canonical slash and leading `./` variants may resolve to the snapshot path, but directories, globs, inferred files, shortened paths, and fuzzy matches never do.
+- Preserve bounded prior Planner output and structured validation details for targeted correction. Only unsupported optional evidence may be stripped on the final attempt; record a warning and audit event, persist no fabricated evidence, and keep structural planning failures blocking.
 - Planner tasks are ordered and reviewable; `ReadyForExecution` requires persisted valid tasks.
 - Planning retries are finite and failed attempts remain visible.
 - Both API and Worker require matching provider, model, and credential configuration.
