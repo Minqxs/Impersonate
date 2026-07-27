@@ -10,6 +10,7 @@ namespace Impersonate.Application.Tests.Ai;
 
 public sealed class ModelRouterTests
 {
+    [Fact] public void OpenAi_alias_and_dated_snapshot_share_rate_limit_family(){Assert.True(ModelRateLimitFamily.Matches(ProviderType.OpenAI,"gpt-4.1","gpt-4.1-2025-04-14"));Assert.False(ModelRateLimitFamily.Matches(ProviderType.OpenAI,"gpt-4.1","gpt-4.1-mini"));Assert.False(ModelRateLimitFamily.Matches(ProviderType.OpenAI,"gpt-4.1","gpt-5"));}
     [Fact] public async Task Selects_only_connected_available_capable_models_deterministically()
     {
         var project=Guid.NewGuid();var connected=AiProviderConnection.Create(ProviderType.Anthropic,"Anthropic");connected.Connected();
