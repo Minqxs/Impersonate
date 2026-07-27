@@ -1,5 +1,6 @@
 using Impersonate.Application.Ai;
 using Impersonate.Domain.Pipelines;
+using Impersonate.Domain.Ai;
 namespace Impersonate.Application.Execution;
 
 public sealed record WorkspaceRequest(Guid ProjectId,Guid PipelineRunId,Guid PlannedTaskId,int AttemptNumber,string RepositoryUrl,string DefaultBranch,IReadOnlyList<string> ApprovedPatchReferences,string? CurrentPatchReference);
@@ -18,9 +19,11 @@ public interface IRepositoryTools
 {
  Task<RepositoryToolResult> ListFilesAsync(WorkspaceReference workspace,string relativePath,CancellationToken ct); Task<RepositoryToolResult> ReadFileAsync(WorkspaceReference workspace,string relativePath,CancellationToken ct); Task<RepositoryToolResult> SearchTextAsync(WorkspaceReference workspace,string query,string relativePath,CancellationToken ct); Task<RepositoryToolResult> ApplyPatchAsync(WorkspaceReference workspace,string patch,CancellationToken ct); Task<RepositoryToolResult> GetDiffAsync(WorkspaceReference workspace,CancellationToken ct); Task<RepositoryToolResult> RunCommandAsync(WorkspaceReference workspace,RepositoryCommand command,CancellationToken ct);
 }
-public sealed record CoderContext(Guid ProjectId,Guid PipelineRunId,string FeatureRequest,Guid PlannedTaskId,string TaskTitle,string TaskDescription,IReadOnlyList<string> AcceptanceCriteria,int AttemptNumber,int RevisionNumber,string? ReviewerFeedback,IReadOnlyList<string> EarlierApprovedSummaries,WorkspaceReference Workspace,SelectedModel Model,string PromptVersion="coder-v1",IReadOnlyList<string>? RepositoryEvidence=null);
-public sealed record CoderResult(bool Succeeded,string Summary,IReadOnlyList<string> ChangedFiles,IReadOnlyList<string> ValidationNotes,int ToolStepCount,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount,string? FailureCode=null,string? FailureMessage=null);
+public sealed record RepositoryEvidenceExcerpt(string Path,string Content,bool Truncated);
+public sealed record CoderContext(Guid ProjectId,Guid PipelineRunId,string FeatureRequest,Guid PlannedTaskId,string TaskTitle,string TaskDescription,IReadOnlyList<string> AcceptanceCriteria,int AttemptNumber,int RevisionNumber,string? ReviewerFeedback,IReadOnlyList<string> EarlierApprovedSummaries,WorkspaceReference Workspace,SelectedModel Model,string PromptVersion="coder-v1",IReadOnlyList<string>? RepositoryEvidence=null,string? PriorProtocolSummary=null);
+public sealed record CoderResult(bool Succeeded,string Summary,IReadOnlyList<string> ChangedFiles,IReadOnlyList<string> ValidationNotes,int ToolStepCount,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount,string? FailureCode=null,string? FailureMessage=null,string? ResponseType=null,int SuccessfulReadCount=0,int SuccessfulSearchCount=0,int SuccessfulPatchCount=0,bool RepositoryInspected=false,bool CurrentDiffExists=false,int PrematureCompletionCount=0);
 public interface ICoderAgent { Task<CoderResult> ExecuteAsync(CoderContext context,CancellationToken ct); }
+public interface IExecutionInvocationStore { Task<Guid?> FindLatestSelectionDecisionIdAsync(Guid taskAttemptId,AgentRole role,CancellationToken ct); Task AddAsync(ExecutionInvocation invocation,CancellationToken ct); Task<IReadOnlyList<ExecutionInvocation>> ListAsync(IReadOnlyCollection<Guid> taskAttemptIds,CancellationToken ct); Task SaveChangesAsync(CancellationToken ct); }
 public sealed record ReviewFinding(string Severity,string Message,string? Path=null,int? Line=null);
 public sealed record ReviewerContext(Guid ProjectId,Guid PipelineRunId,string FeatureRequest,Guid PlannedTaskId,string TaskTitle,string TaskDescription,IReadOnlyList<string> AcceptanceCriteria,int AttemptNumber,string Patch,string PatchSha256,IReadOnlyList<string> ChangedFiles,IReadOnlyList<string> ValidationResults,string CoderSummary,string? PriorFeedback,WorkspaceReference Workspace,SelectedModel Model,string PromptVersion="reviewer-v1");
 public sealed record ReviewerResult(bool Succeeded,ReviewDecisionType? Decision,string Summary,string? Feedback,IReadOnlyList<ReviewFinding> Findings,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount,string? FailureCode=null,string? FailureMessage=null);
