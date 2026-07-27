@@ -49,6 +49,8 @@ npm install
 npm run dev
 ```
 
+At startup the Worker validates that the sanitized child-process environment can start `git --version` and that `Execution:WorkspaceRoot` is writable. `GET /api/execution/readiness` exposes the same safe result without environment values.
+
 In Development, interactive API documentation is available at `https://localhost:7001/swagger`; its OpenAPI document is served from `/openapi/v1.json`.
 The API also permits browser requests from the default Vite development origin, `http://localhost:5173`. Other origins remain blocked unless explicitly configured in a future deployment policy.
 
@@ -104,7 +106,7 @@ The default policy allows three revision attempts after the initial coding attem
 
 Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate routes Planner, Coder, and Reviewer with role-specific compatibility, versioned capability metadata, persisted score components, ranked alternatives, and optional Reviewer diversity. Every pending task is previewed and task-level overrides are capability-validated. Historical outcomes are not scored below the minimum sample size of 10. Environment Anthropic configuration remains a legacy Planner fallback. API and Worker must share `Ai:DataProtectionKeyPath`.
 
-Execution clones the configured public GitHub HTTPS repository beneath `Execution:WorkspaceRoot` (development default `%LOCALAPPDATA%\Impersonate\workspaces`) and stores opaque patch/report artifacts beneath `Execution:ArtifactRoot`. Production requires both roots explicitly. Commands and repository paths are restricted as described in [execution security](docs/architecture/execution-security.md). Private-repository authentication, commits, pushes, branches, and pull-request delivery are not implemented.
+Execution clones the configured public GitHub HTTPS repository beneath `Execution:WorkspaceRoot` (development default `%LOCALAPPDATA%\Impersonate\workspaces`) and stores opaque patch/report artifacts beneath `Execution:ArtifactRoot`. Child processes inherit only explicit Windows/core and proxy/certificate allowlists; credentials, tokens, API keys, and arbitrary application variables are excluded. A preparation outage moves the run to `WaitingForInfrastructure`; after repair, **Retry execution** resumes the same unresolved task without consuming an attempt. Production requires explicit roots. Commands and paths are restricted as described in [execution security](docs/architecture/execution-security.md). Private-repository authentication, commits, pushes, branches, and pull-request delivery are not implemented.
 
 Created run details use project-scoped AI readiness and preview the feature-specific provider, model, and routing explanation before enabling **Start Planning**. The global `/api/planner/readiness` endpoint reports legacy environment fallback health only.
 

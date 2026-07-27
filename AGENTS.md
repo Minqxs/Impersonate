@@ -52,6 +52,8 @@ npm run build
 - Models may deviate when task requirements, repository evidence, security, official documentation, or stronger technical reasoning justify it.
 - Execution workspaces are disposable clones beneath `Execution:WorkspaceRoot`; never modify the configured source checkout.
 - Execution tools must use explicit argument lists and the documented allowlists. Never add unrestricted shell execution, Git commit, push, credential, or remote-mutation commands.
+- Sanitized child processes inherit only documented core/proxy/certificate variable names. On Windows preserve `SystemRoot`; never inherit or log arbitrary values, credentials, tokens, or API keys.
+- A workspace preparation outage blocks the run at infrastructure level and preserves task attempts; it must not cascade into skipped tasks.
 - Patch and report paths exposed outside Infrastructure must remain opaque artifact references, never absolute filesystem paths.
 - Meaningful personality changes require a proposal, review, and human approval.
 - Keep project context separate from the global personality.

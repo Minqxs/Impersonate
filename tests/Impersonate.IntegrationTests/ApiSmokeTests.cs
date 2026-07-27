@@ -110,6 +110,12 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
         Assert.Contains("Ready", json);
         Assert.DoesNotContain("not-returned-test-secret", json);
     }
+
+    [Fact]
+    public async Task ExecutionReadiness_IsSafeAndStartsSanitizedGit()
+    {
+        var json=await client.GetStringAsync("/api/execution/readiness");Assert.Contains("gitVersionSucceeded",json);Assert.Contains("suppliedVariableNames",json);Assert.DoesNotContain("API_KEY",json,StringComparison.OrdinalIgnoreCase);Assert.DoesNotContain("TOKEN",json,StringComparison.OrdinalIgnoreCase);if(OperatingSystem.IsWindows()&&Environment.GetEnvironmentVariable("SystemRoot") is not null)Assert.Contains("SystemRoot",json,StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 public sealed class ProjectApiFactory : WebApplicationFactory<Program>

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { RunDetailPage } from './pages/RunPages';
 
 const run = { id: 'run-1', projectId: 'project-1', featureRequest: 'Add project notes', status: 'Created', createdAtUtc: '2026-07-20T00:00:00Z', loop: { status: 'Pending', currentStage: 'Planning', maximumRevisionAttempts: 3, continueOnTaskFailure: true, retryCount: 0 }, tasks: [], planningAttempts: [] };
@@ -29,7 +30,7 @@ describe('planner completion UI', () => {
 
   it('renders ordered tasks, attempt failures, and terminal state without polling controls', async () => {
     const completed = { ...run, status: 'ReadyForExecution', tasks: [{ id: 'two', sequence: 2, title: 'Expose API', description: 'Add operations.', acceptanceCriteria: ['Endpoints are scoped.'], status: 'Pending', revisionCount: 0, maximumRevisionAttempts: 3, attempts: [], reviews: [] }, { id: 'one', sequence: 1, title: 'Add domain', description: 'Add persistence.', acceptanceCriteria: ['Notes persist.'], status: 'Pending', revisionCount: 0, maximumRevisionAttempts: 3, attempts: [], reviews: [] }], planningAttempts: [{ attemptNumber: 1, provider: 'Anthropic', model: 'configured-model', promptVersion: 'planner-v1', status: 'InvalidOutput', startedAtUtc: '2026-07-20T00:00:00Z', completedAtUtc: '2026-07-20T00:00:01Z', failureCode: 'invalid_output', failureMessage: 'Sequences must be contiguous from 1.' }, { attemptNumber: 2, provider: 'Anthropic', model: 'configured-model', promptVersion: 'planner-v1', status: 'Succeeded', startedAtUtc: '2026-07-20T00:00:02Z', completedAtUtc: '2026-07-20T00:00:03Z' }] };
-    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/execution/readiness') ? response({ ready: true, coder: { ready: true, provider: 'OpenAI', model: 'coder-model', selectionSource: 'AutomaticRouting' }, reviewer: { ready: true, provider: 'OpenAI', model: 'reviewer-model', selectionSource: 'AutomaticRouting' }, blockers: [] }) : String(input).endsWith('/api/ai/providers') ? response({ connections: [] }) : String(input).endsWith('/timeline') ? response([]) : response(completed));
+    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/execution/readiness') ? response({ ready: true, coder: { ready: true, provider: 'OpenAI', model: 'coder-model', selectionSource: 'AutomaticRouting' }, reviewer: { ready: true, provider: 'OpenAI', model: 'reviewer-model', selectionSource: 'AutomaticRouting' }, blockers: [], tasks: completed.tasks.map(task=>({taskId:task.id,sequence:task.sequence,coder:{ready:true,provider:'OpenAI',model:'coder-model',selectionSource:'AutomaticRouting'},reviewer:{ready:true,provider:'OpenAI',model:'reviewer-model',selectionSource:'AutomaticRouting'}})) }) : String(input).endsWith('/api/ai/providers') ? response({ connections: [] }) : String(input).endsWith('/timeline') ? response([]) : response(completed));
     renderDetail();
     expect(await screen.findByText('Coder and Reviewer routing is ready.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start Execution' })).toBeEnabled();
@@ -45,5 +46,9 @@ describe('planner completion UI', () => {
     renderDetail();
     expect(await screen.findByText(/Git commit and pull-request delivery will be introduced in Milestone 6/)).toBeInTheDocument();
     expect(screen.queryByText(/code was committed/i)).not.toBeInTheDocument();
+  });
+
+  it('shows one infrastructure blocker and retries the same run', async () => {
+    const user=userEvent.setup();const blocked={...run,status:'WaitingForInfrastructure',infrastructureFailureCode:'repository_dns_failed',infrastructureFailureMessage:'Repository DNS resolution failed while preparing the isolated workspace.',infrastructureBlockedTaskId:'one',tasks:[{id:'one',sequence:1,title:'Add domain',description:'Add persistence.',acceptanceCriteria:['Notes persist.'],status:'Pending',revisionCount:0,maximumRevisionAttempts:3,attempts:[],reviews:[]} ]};vi.mocked(fetch).mockImplementation((input,init)=>String(input).endsWith('/execution/retry')&&init?.method==='POST'?response({...blocked,status:'Executing'}):String(input).endsWith('/timeline')?response([]):response(blocked));renderDetail();expect(await screen.findByText(/Execution is blocked because the isolated repository workspace could not be prepared/)).toBeInTheDocument();expect(screen.getByText(/repository_dns_failed/)).toBeInTheDocument();expect(screen.getByText(/Affected task: Add domain/)).toBeInTheDocument();await user.click(screen.getByRole('button',{name:'Retry execution'}));expect(vi.mocked(fetch).mock.calls.some(([input])=>String(input).endsWith('/execution/retry'))).toBe(true);expect(screen.getByRole('link',{name:'Configuration health'})).toHaveAttribute('href','/projects/project-1/health');
   });
 });
