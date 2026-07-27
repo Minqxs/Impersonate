@@ -30,6 +30,18 @@ public sealed class ExecutionStructuredOutputTests
         Assert.Contains("schema", result.FailureMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Coder_rejects_oversized_input_before_calling_provider()
+    {
+        var adapter = new CountingAdapter();
+        var agent = new CoderAgent([adapter], new CredentialStore(), new UnusedTools(), Options.Create(new ExecutionOptions { MaximumModelInputTokens = 1000 }));
+        var model = new SelectedModel(Guid.NewGuid(), Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", ModelSelectionSource.AutomaticRouting, 100, "test");
+        var result = await agent.ExecuteAsync(new(Guid.NewGuid(), Guid.NewGuid(), new string('x', 10_000), Guid.NewGuid(), "Task", "Description", ["Done"], 1, 0, null, [], new("workspace"), model), default);
+        Assert.False(result.Succeeded);
+        Assert.Equal("request_token_budget_exceeded", result.FailureCode);
+        Assert.Equal(0, adapter.CallCount);
+    }
+
     private static void AssertStrictObjects(string schema)
     {
         using var document = JsonDocument.Parse(schema);
@@ -59,6 +71,14 @@ public sealed class ExecutionStructuredOutputTests
     {
         public ProviderType ProviderType => ProviderType.OpenAI;
         public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext connection, RoutedModel model, LanguageModelRequest request, CancellationToken cancellationToken) => throw new ProviderRequestException("provider_request_rejected", "The provider rejected the request. HTTP 400: Invalid response schema.", HttpStatusCode.BadRequest, false);
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+    private sealed class CountingAdapter : IAiProviderAdapter
+    {
+        public int CallCount { get; private set; }
+        public ProviderType ProviderType => ProviderType.OpenAI;
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext connection, RoutedModel model, LanguageModelRequest request, CancellationToken cancellationToken) { CallCount++; throw new NotSupportedException(); }
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
