@@ -4,6 +4,7 @@ using Impersonate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Impersonate.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ImpersonateDbContext))]
-    partial class ImpersonateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727111603_AddTargetedTaskExecution")]
+    partial class AddTargetedTaskExecution
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -383,11 +386,6 @@ namespace Impersonate.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(4000)");
 
                     b.Property<string>("PlanningLanguagesJson")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<string>("PlanningWarningsJson")
                         .IsRequired()
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
