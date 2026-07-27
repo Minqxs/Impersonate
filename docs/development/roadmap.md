@@ -163,3 +163,6 @@ The repository must be inspected before this expected state is accepted as fact.
 ## Last recorded repository position
 
 The prior repository roadmap recorded the application bootstrap and project-scoped workspace foundation as complete, with the pipeline and loop domain foundation as the current milestone and planner agent integration next. This record is useful evidence, but a new session must still verify implementation and tests against `current-state-after-milestone-3.md`.
+# Routing hardening
+
+Capability-aware routing and endpoint compatibility are implemented as Milestone 5 hardening. Milestone 6 remains out of scope and has not started.

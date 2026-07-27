@@ -91,3 +91,14 @@ Capture:
 - latency.
 
 Do not allow one successful or failed task to silently rewrite routing policy. Historical performance requires at least 10 samples before contributing to a score; below that threshold the UI says it was not used. Produce reviewed routing recommendations.
+# Capability catalogue v2
+
+Routing uses a provider-aware, ordered identity classifier. Aliases and dated snapshots share a canonical capability and rate-limit identity; flagship, pro, balanced, mini, nano, and specialised coding variants remain distinct. Unknown or malformed IDs receive conservative metadata and are not optimistically enabled for autonomous coding.
+
+Provider model listing proves availability only. The reviewed catalogue separately records role strength, reasoning, structured-output reliability, repository-protocol reliability, agentic coding tier, cost/latency tiers, canonical family and variant, and supported endpoint. OpenAI GPT-5 and o3/o4 requests use the Responses API; verified GPT-4.1 models retain Chat Completions. Unsupported temperature and token parameters are omitted from Responses requests.
+
+The current task is the primary profiling signal. Broad feature-request language does not make every child task security- or architecture-sensitive. A deterministic quality floor is applied before policy scoring: Quality favours maximum capability, Balanced weighs capability and cost, and Economy favours the least costly candidate that still clears the floor. Nano-class profiles do not clear the autonomous Coder floor.
+
+Failure history can require a strictly stronger capability after a repository-protocol or structured-output failure. Explicit overrides remain fixed. Canonical aliases and snapshots do not receive Reviewer-diversity credit. Selection projections expose catalogue version, canonical family, variant, endpoint, required floor, policy contribution, and escalation context.
+
+Execution settings define finite paid-invocation and cumulative input/output-token ceilings. These are token safeguards, not monetary estimates; pricing is deliberately excluded until reliable versioned pricing metadata exists.
