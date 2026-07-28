@@ -4,6 +4,7 @@ using Impersonate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Impersonate.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ImpersonateDbContext))]
-    partial class ImpersonateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727214912_AddTaskPatchCompositionTelemetry")]
+    partial class AddTaskPatchCompositionTelemetry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

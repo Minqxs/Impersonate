@@ -3,9 +3,10 @@ using Impersonate.Domain.Pipelines;
 using Impersonate.Domain.Ai;
 namespace Impersonate.Application.Execution;
 
-public sealed record WorkspaceRequest(Guid ProjectId,Guid PipelineRunId,Guid PlannedTaskId,int AttemptNumber,string RepositoryUrl,string DefaultBranch,IReadOnlyList<string> ApprovedPatchReferences,string? CurrentPatchReference);
+public sealed record WorkspacePatchReference(Guid TaskId,int Sequence,string ArtifactReference);
+public sealed record WorkspaceRequest(Guid ProjectId,Guid PipelineRunId,Guid PlannedTaskId,int AttemptNumber,string RepositoryUrl,string DefaultBranch,IReadOnlyList<WorkspacePatchReference> ApprovedDependencyPatches,string? CurrentPatchReference);
 public sealed record WorkspaceReference(string Value);
-public sealed record WorkspacePreparationResult(bool Succeeded,WorkspaceReference? Workspace,string? FailureCode,string? FailureMessage);
+public sealed record WorkspacePreparationResult(bool Succeeded,WorkspaceReference? Workspace,string? FailureCode,string? FailureMessage,string? SourceBaseCommitSha=null,string? ComposedTreeFingerprint=null,IReadOnlyList<Guid>? DependencyTaskIds=null,bool CurrentRevisionPatchApplied=false,int? FailingDependencySequence=null);
 public interface IRepositoryWorkspaceService { Task<WorkspacePreparationResult> PrepareAsync(WorkspaceRequest request,CancellationToken ct); Task CleanupAsync(WorkspaceReference workspace,CancellationToken ct); }
 public interface IChildProcessEnvironmentBuilder { IReadOnlyDictionary<string,string> Build(); }
 public sealed record ExecutionEnvironmentReadiness(bool Ready,string OperatingSystem,bool GitAvailable,bool GitVersionSucceeded,bool WorkspaceRootWritable,bool CoreEnvironmentValid,bool SanitizedProcessSucceeded,IReadOnlyList<string> SuppliedVariableNames,IReadOnlyList<string> Blockers);

@@ -166,3 +166,5 @@ The prior repository roadmap recorded the application bootstrap and project-scop
 # Routing hardening
 
 Capability-aware routing and endpoint compatibility are implemented as Milestone 5 hardening. Milestone 6 remains out of scope and has not started.
+
+Incremental task patch baselines are Milestone 5 execution hardening. Shared repository caches, bare mirrors, Git worktrees, workspace retention, disk cleanup, and storage quotas remain separate focused work. The Milestone 6 invariant remains one task, one approved commit, and one focused pull request.
