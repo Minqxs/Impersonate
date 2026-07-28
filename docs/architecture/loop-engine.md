@@ -11,3 +11,6 @@ Milestone 5 adds `ReadyForExecution → Executing → ReadyForDelivery`. A seria
 Milestone 5.1 enriches Planning with a bounded repository snapshot and a validated dependency DAG. A deterministic topological ordering prioritises shared contracts, then conflict and architectural-layer heuristics while always respecting dependencies. Original and final order plus adjustment reasons are persisted. Execution remains sequential; parallel task execution is not implemented.
 
 Execution artifacts follow the delivery invariant `one task -> one approved patch -> one future commit -> one future pull request`. A task workspace composes only its approved dependency closure into the Git index, while its working-tree diff remains task-specific. Reviewer input is that incremental patch rather than cumulative feature history. Target commits, branches, pushes, and pull requests remain deferred to Milestone 6.
+# Provider retries inside an operation
+
+A same-model capacity retry is internal to the current Planner, Coder, or Reviewer operation. It does not create a planning attempt, task attempt, model-selection decision, revision, or repeated repository tool action. Coder tool-loop state and Reviewer patch identity are therefore preserved.
