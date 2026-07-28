@@ -16,3 +16,6 @@ The project-scoped UI displays the dependency execution plan, ordering and confl
 The routing core now uses catalogue `catalog-2026-07-v2`, exact provider-aware model identities, conservative unknown-model handling, task-specific quality floors, meaningful Quality/Balanced/Economy scoring, canonical Reviewer diversity, and OpenAI endpoint-aware request construction. Milestone 6 has not started.
 
 Task execution now keeps fresh isolated clones while composing only approved direct and transitive dependency patches. A composed Git index tree becomes the current task baseline, producing independent incremental artifacts and full task-replacement patches for revisions. Composition telemetry records the source SHA, dependency IDs/count, tree fingerprint, revision-patch state, and incremental file count.
+# Rate-limit-aware provider calls
+
+Provider calls now distinguish brief capacity limits from exhausted billing quota, honor bounded provider reset information, retry the exact same model request, and coordinate short in-process cooldowns before existing model fallback. Distributed cooldowns and context compaction are not implemented.

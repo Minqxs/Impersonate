@@ -15,13 +15,15 @@ public enum ProviderCredentialReadStatus { Found, Missing, Unreadable }
 public sealed record ProviderCredentialReadResult(ProviderCredentialReadStatus Status,ProviderCredential? Credential,string? SafeFailureCode,string? SafeFailureMessage);
 public sealed class ProviderCredentialStorageException:Exception { public ProviderCredentialStorageException():base("The provider credential could not be stored safely."){} }
 public sealed class ProviderCredentialUnavailableException(string code,string safeMessage):Exception(safeMessage) { public string Code{get;}=code; }
-public sealed class ProviderRequestException(string code,string safeMessage,System.Net.HttpStatusCode statusCode,bool isTransient):Exception(safeMessage) { public string Code{get;}=code;public System.Net.HttpStatusCode StatusCode{get;}=statusCode;public bool IsTransient{get;}=isTransient; }
+public enum RateLimitScope { Requests, Tokens, ConcurrentRequests, Unknown }
+public sealed record ProviderCapacityMetadata(System.Net.HttpStatusCode StatusCode,string? ProviderRequestId=null,TimeSpan? RetryAfter=null,TimeSpan? RequestReset=null,TimeSpan? TokenReset=null,long? RequestLimit=null,long? RemainingRequests=null,long? TokenLimit=null,long? RemainingTokens=null,RateLimitScope Scope=RateLimitScope.Unknown,bool TemporaryCapacity=false,bool QuotaExhausted=false);
+public sealed class ProviderRequestException(string code,string safeMessage,System.Net.HttpStatusCode statusCode,bool isTransient,ProviderCapacityMetadata? capacity=null):Exception(safeMessage) { public string Code{get;}=code;public System.Net.HttpStatusCode StatusCode{get;}=statusCode;public bool IsTransient{get;}=isTransient;public ProviderCapacityMetadata? Capacity{get;}=capacity; }
 public sealed record ProviderConnectionContext(Guid ConnectionId, ProviderType ProviderType, ProviderCredential Credential);
 public sealed record ProviderValidationResult(bool Succeeded, bool InvalidCredentials, string? FailureCode, string SafeMessage);
 public sealed record ProviderModel(string Id, string Name, string? Description, ModelLifecycleStatus Lifecycle, ModelCapability Capabilities, CapabilityMetadataSource CapabilitySource, int? ContextWindow, int? MaximumOutput);
 public sealed record RoutedModel(Guid? DiscoveredModelId, string ProviderModelId);
 public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema,int MaximumOutputTokens);
-public sealed record LanguageModelResponse(string Content,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount);
+public sealed record LanguageModelResponse(string Content,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount,int SameModelRequestAttemptCount=1,int RateLimitRetryCount=0,long CumulativeRateLimitWaitMilliseconds=0,RateLimitScope? LastRateLimitScope=null,bool ProviderResetUsed=false);
 
 public interface IProviderCredentialStore
 {

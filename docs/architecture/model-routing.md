@@ -102,3 +102,6 @@ The current task is the primary profiling signal. Broad feature-request language
 Failure history can require a strictly stronger capability after a repository-protocol or structured-output failure. Explicit overrides remain fixed. Canonical aliases and snapshots do not receive Reviewer-diversity credit. Selection projections expose catalogue version, canonical family, variant, endpoint, required floor, policy contribution, and escalation context.
 
 Execution settings define finite paid-invocation and cumulative input/output-token ceilings. These are token safeguards, not monetary estimates; pricing is deliberately excluded until reliable versioned pricing metadata exists.
+# Rate limits before fallback
+
+Automatic routing does not exclude a model family on the first temporary 429. Provider capacity policy first performs finite same-model retries using safe reset metadata. Only after retry exhaustion, an excessive requested wait, or continued provider unavailability may existing fallback policy exclude that canonical family and select another eligible model. Quality floors and explicit overrides remain authoritative.

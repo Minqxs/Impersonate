@@ -16,3 +16,12 @@ The run page obtains readiness from `/api/projects/{projectId}/ai/readiness` and
 Provider discovery is an availability inventory, not evidence of reasoning or agentic tool quality. Discovered IDs are joined to reviewed capability and endpoint metadata. Unknown IDs remain visible but conservative; an available model can therefore be endpoint-incompatible or below the task quality floor without implying that the credential lacks access.
 
 For troubleshooting, synchronise the connection after provider-side access changes and inspect the routing explanation. “Known stronger model is not available to this provider connection” means the catalogue knows the model but the connected provider did not return it. Credentials and raw provider responses are never included in these explanations.
+# Provider capacity and retries
+
+Provider adapters expose only safe structured capacity metadata: the HTTP status, provider request ID, retry/reset durations, numeric request/token limits, rate-limit scope, and temporary-capacity or exhausted-quota classification. Credentials, authorization and raw response headers/bodies are never persisted.
+
+Temporary `provider_rate_limited` responses use provider `Retry-After` first, then the reset relevant to the reported token/request scope, and finally bounded exponential backoff with jitter. The exact request and model are retried before model-family fallback. `provider_quota_exhausted` is non-transient and is never automatically slept or retried. Explicit model overrides receive the same bounded retry treatment but never silently reroute.
+
+The Worker shares an in-process cooldown coordinator keyed by provider connection, canonical model rate-limit family, and scope. This prevents predictable sequential calls during a known brief reset. Cooldowns are finite and cancellation-aware; independent Worker processes do not share cooldown state.
+
+Defaults are two same-model retries, a 15-second per-wait ceiling, a 30-second cumulative ceiling, 1-second initial backoff, 8-second maximum backoff, and up to 250 milliseconds of jitter. Context/transcript compaction remains deferred to a separate change.
