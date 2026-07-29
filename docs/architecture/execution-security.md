@@ -1,12 +1,12 @@
 # Execution workspace and tool security
 
-## No-progress and spend boundaries
+## Autonomous execution and emergency boundaries
 
-Coder provider rounds and repository tool steps are separate counters. Repeated read-only rounds trigger one compact mandatory implementation instruction; another no-patch response stops with `coder_no_patch_progress`. Completed non-empty malformed JSON receives at most one transcript-free repair containing only the schema, bounded malformed output, and safe validation details. Refusals, incomplete output, empty output, and exhausted task budgets are never repaired.
+Coder provider rounds and repository tool executions are separate observational counters. The model may investigate, patch, re-inspect, inspect the diff, and validate in repository-driven order. A high emergency-only circuit breaker defaults to 30 provider rounds and 150 repository tools and returns `coder_emergency_circuit_breaker_triggered`; it does not force a phase, patch deadline, model fallback, or transcript reset. Completed non-empty malformed JSON receives at most one structured-output repair.
 
-Cumulative task budgets span attempts, model fallbacks, same-model retries, and manual retries. They are evaluated before starting more paid work and surface `task_ai_budget_exhausted` when no safe allowance remains. Successful repository diffs remain in the isolated workspace when finalisation needs repair, so a patch is not executed twice.
+Token counts and paid provider requests remain historical telemetry. They do not prevent provider work, fail tasks, disable retry, or block eligible model fallback. Reliable autonomous completion precedes token optimisation.
 
-The Discovery-to-Implementation transition retains a bounded structured working set of safe canonical file excerpts and deduplicated search results. The packet is constructed before historical transcript removal. Once mandatory implementation begins, only patching, diff inspection, approved focused validation, completion, or a validated safe blocker is accepted; prohibited discovery calls fail immediately without execution or another provider round.
+The complete useful Coder transcript is returned to the same logical model conversation. Repository evidence, reads, searches, patch outcomes, diffs, and focused validation results are not arbitrarily removed. If the complete request cannot fit the discovered model context window, execution fails safely with `provider_context_limit_exceeded`; context compaction is deferred to Historical execution optimisation.
 
 Each coding attempt receives a fresh workspace beneath `Execution:WorkspaceRoot`, partitioned by project, run, task, and attempt IDs. Development defaults to `%LOCALAPPDATA%\Impersonate\workspaces`; production requires explicit workspace and artifact roots. Only public GitHub HTTPS repositories are supported in this milestone. Private repositories fail safely because GitHub authentication is deliberately deferred.
 

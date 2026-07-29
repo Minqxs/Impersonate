@@ -170,4 +170,6 @@ Capability-aware routing and endpoint compatibility are implemented as Milestone
 Incremental task patch baselines are Milestone 5 execution hardening. Shared repository caches, bare mirrors, Git worktrees, workspace retention, disk cleanup, and storage quotas remain separate focused work. The Milestone 6 invariant remains one task, one approved commit, and one focused pull request.
 # Deferred provider efficiency work
 
-Context/transcript compaction and distributed provider-capacity coordination remain future focused work. They are intentionally outside the rate-limit-aware retry change and Milestone 6 has not started.
+## Historical execution optimisation
+
+Reliable autonomous execution comes before token optimisation. A later evidence-driven milestone may optimise context, prompts, and spend using successful run history: task type, repository area, useful evidence files, tool sequence, prompt version, model outcome, patch result, Reviewer decision, revisions, and token consumption. It may evaluate context compaction, prompt minimisation, repository knowledge reuse, and spend policy only after reliable completion data exists. Model fine-tuning is not planned until a training-data and evaluation strategy exists. Milestone 6 has not started.

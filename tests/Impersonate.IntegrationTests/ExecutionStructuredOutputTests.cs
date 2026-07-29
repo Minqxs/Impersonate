@@ -34,11 +34,11 @@ public sealed class ExecutionStructuredOutputTests
     public async Task Coder_rejects_oversized_input_before_calling_provider()
     {
         var adapter = new CountingAdapter();
-        var agent = new CoderAgent([adapter], new CredentialStore(), new UnusedTools(), Options.Create(new ExecutionOptions { MaximumModelInputTokens = 1000 }));
+        var agent = new CoderAgent([adapter], new CredentialStore(), new UnusedTools(), Options.Create(new ExecutionOptions { DefaultModelContextWindowTokens = 1000 }));
         var model = new SelectedModel(Guid.NewGuid(), Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", ModelSelectionSource.AutomaticRouting, 100, "test");
         var result = await agent.ExecuteAsync(new(Guid.NewGuid(), Guid.NewGuid(), new string('x', 10_000), Guid.NewGuid(), "Task", "Description", ["Done"], 1, 0, null, [], new("workspace"), model), default);
         Assert.False(result.Succeeded);
-        Assert.Equal("request_token_budget_exceeded", result.FailureCode);
+        Assert.Equal("provider_context_limit_exceeded", result.FailureCode);
         Assert.Equal(0, adapter.CallCount);
     }
 
@@ -47,7 +47,7 @@ public sealed class ExecutionStructuredOutputTests
     {
         var adapter=new ImmediateCompleteAdapter();
         var tools=new EvidenceTools();
-        var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderSteps=5,MaximumModelInputTokens=4000}));
+        var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderToolExecutions=5,DefaultModelContextWindowTokens=4000}));
         var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
         var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Add IsActive","Add property",["Property exists"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/User.cs"]),default);
         Assert.False(result.Succeeded);
@@ -61,51 +61,58 @@ public sealed class ExecutionStructuredOutputTests
     }
 
     [Fact]
-    public async Task Coder_stops_repeated_read_only_rounds_before_tool_budget()
+    public async Task Coder_allows_read_only_discovery_until_emergency_circuit_breaker()
     {
         var adapter=new RepeatedReadAdapter();
         var tools=new EvidenceTools();
         var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions
         {
-            MaximumCoderSteps=20,
+            MaximumCoderToolExecutions=20,
             MaximumCoderProviderRounds=6,
-            MaximumConsecutiveReadOnlyRounds=3,
-            MaximumCoderRoundsBeforePatch=4,
-            MaximumModelInputTokens=4000
+            // Keep this fixture focused on the emergency round limit; context exhaustion
+            // has its own coverage and may legitimately terminate an autonomous session first.
+            DefaultModelContextWindowTokens=32000
         }));
         var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
 
         var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Add DisplayName","Add one property",["Property exists"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/User.cs"]),default);
 
         Assert.False(result.Succeeded);
-        Assert.Equal("coder_mandatory_implementation_protocol_failed",result.FailureCode);
-        Assert.True(result.ProviderRoundTripCount<=5);
-        Assert.True(result.ToolStepCount<20);
+        Assert.Equal("coder_emergency_circuit_breaker_triggered",result.FailureCode);
+        Assert.Equal(6,result.ProviderRoundTripCount);
+        Assert.Equal(6,result.ToolStepCount);
         Assert.Equal(0,result.SuccessfulPatchCount);
-        Assert.Equal(1,result.NoProgressCorrectionCount);
-        Assert.Contains("mandatory_implementation",adapter.Requests[^1].UserContent);
-        Assert.True(adapter.Requests.Sum(x=>x.UserContent.Length)<25_000);
+        Assert.Equal(0,result.NoProgressCorrectionCount);
+        Assert.All(adapter.Requests,request=>Assert.DoesNotContain("mandatory_implementation",request.UserContent));
     }
 
     [Fact]
-    public async Task Coder_preserves_discovered_profile_sources_for_mandatory_implementation()
+    public async Task Coder_preserves_complete_discovery_transcript_and_patches_after_round_four()
     {
         using var repository=TemporaryProfileRepository.Create();var adapter=new WorkingSetAdapter();var tools=new ProfileTools(repository.Root);
-        var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderSteps=20,MaximumCoderProviderRounds=6,MaximumConsecutiveReadOnlyRounds=3,MaximumCoderRoundsBeforePatch=4,MaximumImplementationWorkingSetCharacters=12000,MaximumModelInputTokens=8000}));
+        var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderToolExecutions=20,MaximumCoderProviderRounds=10,DefaultModelContextWindowTokens=8000}));
         var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
 
         var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Add DisplayName",Guid.NewGuid(),"Add DisplayName","Expose a read-only DisplayName derived from profiles",["DisplayName uses profile FullName","Focused tests pass"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/HomeTaskSA.Domain/Entities/User.cs"]),default);
 
         Assert.True(result.Succeeded,result.FailureMessage);Assert.Equal(1,tools.PatchCalls);Assert.True(tools.DiffCalls>0);Assert.Contains("backend/src/HomeTaskSA.Domain/Entities/User.cs",result.ChangedFiles);Assert.Equal("Completion",result.CurrentPhase);
-        var correction=adapter.Requests.First(x=>x.UserContent.Contains("mandatory_implementation"));Assert.Contains("CustomerProfile",correction.UserContent);Assert.Contains("ServiceProviderProfile",correction.UserContent);Assert.Contains("FullName",correction.UserContent);Assert.DoesNotContain("tool_results",correction.UserContent);Assert.True(correction.UserContent.Length<12000);
+        Assert.True(adapter.Requests.Count>4);var implementation=adapter.Requests[3];Assert.Contains("CustomerProfile",implementation.UserContent);Assert.Contains("ServiceProviderProfile",implementation.UserContent);Assert.Contains("FullName",implementation.UserContent);Assert.Contains("tool_results",implementation.UserContent);Assert.DoesNotContain("mandatory_implementation",implementation.UserContent);
     }
 
     [Fact]
-    public async Task Coder_rejects_discovery_tool_after_mandatory_correction_without_executing_it()
+    public async Task Coder_keeps_discovery_tools_available_until_emergency_limit()
     {
-        var adapter=new ProhibitedReadAdapter();var tools=new ProfileTools();var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumConsecutiveReadOnlyRounds=1,MaximumCoderRoundsBeforePatch=1,MaximumCoderProviderRounds=4}));var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
+        var adapter=new ProhibitedReadAdapter();var tools=new ProfileTools();var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderToolExecutions=4,MaximumCoderProviderRounds=4}));var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
         var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Task","Description",["Done"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/HomeTaskSA.Domain/Entities/User.cs"]),default);
-        Assert.False(result.Succeeded);Assert.Equal("coder_mandatory_implementation_protocol_failed",result.FailureCode);Assert.Equal("read_file",result.RequestedProhibitedTool);Assert.Equal(2,tools.ReadCalls);
+        Assert.False(result.Succeeded);Assert.Equal("coder_emergency_circuit_breaker_triggered",result.FailureCode);Assert.Null(result.RequestedProhibitedTool);Assert.Equal(5,tools.ReadCalls);
+    }
+
+    [Fact]
+    public async Task Coder_returns_failed_patch_to_same_model_then_succeeds()
+    {
+        var adapter=new PatchRetryAdapter();var tools=new PatchRetryTools();var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderProviderRounds=10,MaximumCoderToolExecutions=20}));var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
+        var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Task","Description",["Done"],1,0,null,[],new("workspace"),model),default);
+        Assert.True(result.Succeeded,result.FailureMessage);Assert.True(result.InputTokenCount>80_000);Assert.True(result.OutputTokenCount>20_000);Assert.Equal(2,result.PatchAttemptCount);Assert.Equal(1,result.FailedPatchCount);Assert.Equal(1,result.SuccessfulPatchCount);Assert.Null(result.LastPatchFailureCode);Assert.Contains("patch_rejected",adapter.Requests[2].UserContent);Assert.Contains("read_file",adapter.Requests[2].UserContent);
     }
 
     [Fact]
@@ -194,12 +201,29 @@ public sealed class ExecutionStructuredOutputTests
     {
         public List<LanguageModelRequest> Requests{get;}=[];public ProviderType ProviderType=>ProviderType.OpenAI;
         public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c,RoutedModel m,LanguageModelRequest q,CancellationToken ct){Requests.Add(q);var n=Requests.Count;var body=n switch{1=>Calls("search_text","{\"path\":\"backend/src\",\"query\":\"FullName\",\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),2=>"{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"c\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/CustomerProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}},{\"id\":\"s\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/ServiceProviderProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}",3=>Calls("search_text","{\"path\":\"backend/tests\",\"query\":\"User\",\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),4=>Calls("apply_patch","{\"path\":null,\"query\":null,\"patch\":\"*** Begin Patch\\n*** Update File: backend/src/HomeTaskSA.Domain/Entities/User.cs\\n@@\\n+ public string DisplayName => CustomerProfile?.FullName ?? ServiceProviderProfile?.FullName ?? string.Empty;\\n*** End Patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),5=>Calls("get_diff","{\"path\":null,\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),_=>"{\"type\":\"complete\",\"calls\":null,\"summary\":\"Added DisplayName\",\"validationNotes\":[\"diff verified\"],\"knownLimitations\":[],\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}"};return Task.FromResult(new LanguageModelResponse(body,"request",100,20));}
-        private static string Calls(string tool,string args)=>$"{{\"type\":\"tool_calls\",\"calls\":[{{\"id\":\"x\",\"tool\":\"{tool}\",\"arguments\":{args}}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}}";
+        public static string Calls(string tool,string args)=>$"{{\"type\":\"tool_calls\",\"calls\":[{{\"id\":\"x\",\"tool\":\"{tool}\",\"arguments\":{args}}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}}";
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();
     }
     private sealed class ProhibitedReadAdapter:IAiProviderAdapter
     {
         private int calls;public ProviderType ProviderType=>ProviderType.OpenAI;public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c,RoutedModel m,LanguageModelRequest q,CancellationToken ct){calls++;var body="{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"r\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/CustomerProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}";return Task.FromResult(new LanguageModelResponse(body,$"request-{calls}",10,5));}public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task Coder_cancellation_stops_before_emergency_limit()
+    {
+        var adapter=new CountingAdapter();var agent=new CoderAgent([adapter],new CredentialStore(),new UnusedTools(),Options.Create(new ExecutionOptions()));var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");using var cancellation=new CancellationTokenSource();cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Task","Description",["Done"],1,0,null,[],new("workspace"),model),cancellation.Token));Assert.Equal(0,adapter.CallCount);
+    }
+    private sealed class PatchRetryAdapter:IAiProviderAdapter
+    {
+        public List<LanguageModelRequest> Requests{get;}=[];public ProviderType ProviderType=>ProviderType.OpenAI;
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c,RoutedModel m,LanguageModelRequest q,CancellationToken ct){Requests.Add(q);var body=Requests.Count switch{1=>WorkingSetAdapter.Calls("read_file","{\"path\":\"User.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),2=>WorkingSetAdapter.Calls("apply_patch","{\"path\":null,\"query\":null,\"patch\":\"bad patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),3=>WorkingSetAdapter.Calls("read_file","{\"path\":\"User.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),4=>WorkingSetAdapter.Calls("apply_patch","{\"path\":null,\"query\":null,\"patch\":\"good patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),5=>WorkingSetAdapter.Calls("get_diff","{\"path\":null,\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),_=>"{\"type\":\"complete\",\"calls\":null,\"summary\":\"done\",\"validationNotes\":[],\"knownLimitations\":[],\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}"};return Task.FromResult(new LanguageModelResponse(body,"request",50_000,20_000));}
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();
+    }
+    private sealed class PatchRetryTools:IRepositoryTools
+    {
+        private int patches;public Task<RepositoryToolResult> ReadFileAsync(WorkspaceReference w,string p,CancellationToken ct)=>Task.FromResult(new RepositoryToolResult(true,"class User {}"));public Task<RepositoryToolResult> ApplyPatchAsync(WorkspaceReference w,string p,CancellationToken ct){patches++;return Task.FromResult(patches==1?new RepositoryToolResult(false,"","patch_rejected","Patch context did not match."):new RepositoryToolResult(true,"applied"));}public Task<RepositoryToolResult> GetDiffAsync(WorkspaceReference w,CancellationToken ct)=>Task.FromResult(new RepositoryToolResult(true,patches>1?"diff --git a/User.cs b/User.cs\n+change":""));public Task<RepositoryToolResult> RunCommandAsync(WorkspaceReference w,RepositoryCommand c,CancellationToken ct)=>Task.FromResult(new RepositoryToolResult(true,"User.cs"));public Task<RepositoryToolResult> ListFilesAsync(WorkspaceReference w,string p,CancellationToken ct)=>throw new NotSupportedException();public Task<RepositoryToolResult> SearchTextAsync(WorkspaceReference w,string q,string p,CancellationToken ct)=>throw new NotSupportedException();
     }
     private sealed class BlockedAdapter:IAiProviderAdapter
     {
