@@ -60,6 +60,33 @@ public sealed class ExecutionStructuredOutputTests
         Assert.Contains("completion_rejected",adapter.Requests[1].UserContent);
     }
 
+    [Fact]
+    public async Task Coder_stops_repeated_read_only_rounds_before_tool_budget()
+    {
+        var adapter=new RepeatedReadAdapter();
+        var tools=new EvidenceTools();
+        var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions
+        {
+            MaximumCoderSteps=20,
+            MaximumCoderProviderRounds=6,
+            MaximumConsecutiveReadOnlyRounds=3,
+            MaximumCoderRoundsBeforePatch=4,
+            MaximumModelInputTokens=4000
+        }));
+        var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
+
+        var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Add DisplayName","Add one property",["Property exists"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/User.cs"]),default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("coder_no_patch_progress",result.FailureCode);
+        Assert.True(result.ProviderRoundTripCount<=5);
+        Assert.True(result.ToolStepCount<20);
+        Assert.Equal(0,result.SuccessfulPatchCount);
+        Assert.Equal(1,result.NoProgressCorrectionCount);
+        Assert.Contains("mandatory_implementation",adapter.Requests[^1].UserContent);
+        Assert.True(adapter.Requests.Sum(x=>x.UserContent.Length)<25_000);
+    }
+
     [Theory]
     [InlineData("../secret.txt")]
     [InlineData(".env")]
@@ -120,6 +147,19 @@ public sealed class ExecutionStructuredOutputTests
         public List<LanguageModelRequest> Requests{get;}=[];
         public ProviderType ProviderType=>ProviderType.OpenAI;
         public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext connection,RoutedModel model,LanguageModelRequest request,CancellationToken cancellationToken){Requests.Add(request);return Task.FromResult(new LanguageModelResponse("{\"type\":\"complete\",\"calls\":null,\"summary\":\"done\",\"validationNotes\":[],\"knownLimitations\":[]}","request",10,5));}
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection,CancellationToken cancellationToken)=>throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection,CancellationToken cancellationToken)=>throw new NotSupportedException();
+    }
+    private sealed class RepeatedReadAdapter:IAiProviderAdapter
+    {
+        public List<LanguageModelRequest> Requests{get;}=[];
+        public ProviderType ProviderType=>ProviderType.OpenAI;
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext connection,RoutedModel model,LanguageModelRequest request,CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            var body="{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"read\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/User.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null}";
+            return Task.FromResult(new LanguageModelResponse(body,"request",100,20));
+        }
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection,CancellationToken cancellationToken)=>throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection,CancellationToken cancellationToken)=>throw new NotSupportedException();
     }

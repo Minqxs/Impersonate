@@ -22,8 +22,8 @@ public sealed record ProviderConnectionContext(Guid ConnectionId, ProviderType P
 public sealed record ProviderValidationResult(bool Succeeded, bool InvalidCredentials, string? FailureCode, string SafeMessage);
 public sealed record ProviderModel(string Id, string Name, string? Description, ModelLifecycleStatus Lifecycle, ModelCapability Capabilities, CapabilityMetadataSource CapabilitySource, int? ContextWindow, int? MaximumOutput);
 public sealed record RoutedModel(Guid? DiscoveredModelId, string ProviderModelId);
-public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema,int MaximumOutputTokens);
-public sealed record LanguageModelResponse(string Content,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount,int SameModelRequestAttemptCount=1,int RateLimitRetryCount=0,long CumulativeRateLimitWaitMilliseconds=0,RateLimitScope? LastRateLimitScope=null,bool ProviderResetUsed=false);
+public sealed record LanguageModelRequest(string Model,string SystemInstructions,string UserContent,string JsonSchema,int MaximumOutputTokens,string? ReasoningEffort=null,string? TextVerbosity=null);
+public sealed record LanguageModelResponse(string Content,string? ProviderRequestId,int? InputTokenCount,int? OutputTokenCount,int SameModelRequestAttemptCount=1,int RateLimitRetryCount=0,long CumulativeRateLimitWaitMilliseconds=0,RateLimitScope? LastRateLimitScope=null,bool ProviderResetUsed=false,string? ResponseStatus=null,string? IncompleteReason=null,IReadOnlyList<string>? OutputItemTypes=null,int OutputTextLength=0,int? ReasoningTokenCount=null,string? SafeFailureCode=null);
 
 public interface IProviderCredentialStore
 {
