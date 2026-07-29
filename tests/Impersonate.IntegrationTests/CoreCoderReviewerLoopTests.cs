@@ -46,7 +46,7 @@ public sealed class CoreCoderReviewerLoopTests
     }
 
     private static PipelineRun ExecutableRun(int maximumRevisions,bool continueOnFailure=true){var run=PipelineRun.Create(Guid.NewGuid(),"Add profile",maximumRevisions,continueOnFailure);run.StartPlanning();run.AddTask(1,"Add profile","Implement profile",["Profile works"]);run.MarkReadyForExecution();run.StartExecution();return run;}
-    private static CoderAgent Coder(LoopTools tools)=>new([new SequenceAdapter(CoderResponses())],new Credentials(),tools,Options.Create(new ExecutionOptions{MaximumCoderSteps=5,MaximumModelInputTokens=4000}));
+    private static CoderAgent Coder(LoopTools tools)=>new([new SequenceAdapter(CoderResponses())],new Credentials(),tools,Options.Create(new ExecutionOptions{MaximumCoderToolExecutions=5,DefaultModelContextWindowTokens=4000}));
     private static (ReviewerAgent Agent,SequenceAdapter Adapter) Reviewer(string decision,string? feedback)=>ReviewerRaw(JsonSerializer.Serialize(new{decision,summary="reviewed",feedback,findings=Array.Empty<object>()}));
     private static (ReviewerAgent Agent,SequenceAdapter Adapter) ReviewerRaw(string response){var adapter=new SequenceAdapter([response]);return(new ReviewerAgent([adapter],new Credentials(),Options.Create(new ExecutionOptions())),adapter);}
     private static CoderContext Context(PipelineRun run,PlannedTask task,string? feedback)=>new(run.ProjectId,run.Id,run.FeatureRequest,task.Id,task.Title,task.Description,task.AcceptanceCriteria,task.Attempts.Last().AttemptNumber,task.RevisionCount,feedback,[],new("workspace"),Model(),RepositoryEvidence:["User.cs"]);

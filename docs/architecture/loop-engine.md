@@ -14,3 +14,5 @@ Execution artifacts follow the delivery invariant `one task -> one approved patc
 # Provider retries inside an operation
 
 A same-model capacity retry is internal to the current Planner, Coder, or Reviewer operation. It does not create a planning attempt, task attempt, model-selection decision, revision, or repeated repository tool action. Coder tool-loop state and Reviewer patch identity are therefore preserved.
+
+The Coder loop is autonomous within repository-tool safety boundaries. Observational phases derive from activity: Discovery before patch activity, Implementation after a patch attempt, Validation when an existing patch is being validated, Completion on valid completion, and Blocked on a validated blocker. Phases do not control tools, spending, fallback, or transcript retention. Planner attempts and Reviewer revision counts remain finite product-correctness rules.
