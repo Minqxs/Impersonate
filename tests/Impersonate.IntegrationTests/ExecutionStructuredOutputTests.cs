@@ -78,13 +78,40 @@ public sealed class ExecutionStructuredOutputTests
         var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Add DisplayName","Add one property",["Property exists"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/User.cs"]),default);
 
         Assert.False(result.Succeeded);
-        Assert.Equal("coder_no_patch_progress",result.FailureCode);
+        Assert.Equal("coder_mandatory_implementation_protocol_failed",result.FailureCode);
         Assert.True(result.ProviderRoundTripCount<=5);
         Assert.True(result.ToolStepCount<20);
         Assert.Equal(0,result.SuccessfulPatchCount);
         Assert.Equal(1,result.NoProgressCorrectionCount);
         Assert.Contains("mandatory_implementation",adapter.Requests[^1].UserContent);
         Assert.True(adapter.Requests.Sum(x=>x.UserContent.Length)<25_000);
+    }
+
+    [Fact]
+    public async Task Coder_preserves_discovered_profile_sources_for_mandatory_implementation()
+    {
+        using var repository=TemporaryProfileRepository.Create();var adapter=new WorkingSetAdapter();var tools=new ProfileTools(repository.Root);
+        var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumCoderSteps=20,MaximumCoderProviderRounds=6,MaximumConsecutiveReadOnlyRounds=3,MaximumCoderRoundsBeforePatch=4,MaximumImplementationWorkingSetCharacters=12000,MaximumModelInputTokens=8000}));
+        var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
+
+        var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Add DisplayName",Guid.NewGuid(),"Add DisplayName","Expose a read-only DisplayName derived from profiles",["DisplayName uses profile FullName","Focused tests pass"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/HomeTaskSA.Domain/Entities/User.cs"]),default);
+
+        Assert.True(result.Succeeded,result.FailureMessage);Assert.Equal(1,tools.PatchCalls);Assert.True(tools.DiffCalls>0);Assert.Contains("backend/src/HomeTaskSA.Domain/Entities/User.cs",result.ChangedFiles);Assert.Equal("Completion",result.CurrentPhase);
+        var correction=adapter.Requests.First(x=>x.UserContent.Contains("mandatory_implementation"));Assert.Contains("CustomerProfile",correction.UserContent);Assert.Contains("ServiceProviderProfile",correction.UserContent);Assert.Contains("FullName",correction.UserContent);Assert.DoesNotContain("tool_results",correction.UserContent);Assert.True(correction.UserContent.Length<12000);
+    }
+
+    [Fact]
+    public async Task Coder_rejects_discovery_tool_after_mandatory_correction_without_executing_it()
+    {
+        var adapter=new ProhibitedReadAdapter();var tools=new ProfileTools();var agent=new CoderAgent([adapter],new CredentialStore(),tools,Options.Create(new ExecutionOptions{MaximumConsecutiveReadOnlyRounds=1,MaximumCoderRoundsBeforePatch=1,MaximumCoderProviderRounds=4}));var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");
+        var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Task","Description",["Done"],1,0,null,[],new("workspace"),model,RepositoryEvidence:["backend/src/HomeTaskSA.Domain/Entities/User.cs"]),default);
+        Assert.False(result.Succeeded);Assert.Equal("coder_mandatory_implementation_protocol_failed",result.FailureCode);Assert.Equal("read_file",result.RequestedProhibitedTool);Assert.Equal(2,tools.ReadCalls);
+    }
+
+    [Fact]
+    public async Task Coder_maps_valid_blocker_without_fallback_code()
+    {
+        var agent=new CoderAgent([new BlockedAdapter()],new CredentialStore(),new EvidenceTools(),Options.Create(new ExecutionOptions()));var model=new SelectedModel(Guid.NewGuid(),Guid.NewGuid(),ProviderType.OpenAI,"gpt-4.1",ModelSelectionSource.AutomaticRouting,100,"test");var result=await agent.ExecuteAsync(new(Guid.NewGuid(),Guid.NewGuid(),"Feature",Guid.NewGuid(),"Task","Description",["Done"],1,0,null,[],new("workspace"),model),default);Assert.False(result.Succeeded);Assert.Equal("coder_missing_repository_evidence",result.FailureCode);Assert.Contains("profile",result.FailureMessage!,StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -162,6 +189,36 @@ public sealed class ExecutionStructuredOutputTests
         }
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection,CancellationToken cancellationToken)=>throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection,CancellationToken cancellationToken)=>throw new NotSupportedException();
+    }
+    private sealed class WorkingSetAdapter:IAiProviderAdapter
+    {
+        public List<LanguageModelRequest> Requests{get;}=[];public ProviderType ProviderType=>ProviderType.OpenAI;
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c,RoutedModel m,LanguageModelRequest q,CancellationToken ct){Requests.Add(q);var n=Requests.Count;var body=n switch{1=>Calls("search_text","{\"path\":\"backend/src\",\"query\":\"FullName\",\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),2=>"{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"c\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/CustomerProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}},{\"id\":\"s\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/ServiceProviderProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}",3=>Calls("search_text","{\"path\":\"backend/tests\",\"query\":\"User\",\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),4=>Calls("apply_patch","{\"path\":null,\"query\":null,\"patch\":\"*** Begin Patch\\n*** Update File: backend/src/HomeTaskSA.Domain/Entities/User.cs\\n@@\\n+ public string DisplayName => CustomerProfile?.FullName ?? ServiceProviderProfile?.FullName ?? string.Empty;\\n*** End Patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),5=>Calls("get_diff","{\"path\":null,\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),_=>"{\"type\":\"complete\",\"calls\":null,\"summary\":\"Added DisplayName\",\"validationNotes\":[\"diff verified\"],\"knownLimitations\":[],\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}"};return Task.FromResult(new LanguageModelResponse(body,"request",100,20));}
+        private static string Calls(string tool,string args)=>$"{{\"type\":\"tool_calls\",\"calls\":[{{\"id\":\"x\",\"tool\":\"{tool}\",\"arguments\":{args}}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}}";
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();
+    }
+    private sealed class ProhibitedReadAdapter:IAiProviderAdapter
+    {
+        private int calls;public ProviderType ProviderType=>ProviderType.OpenAI;public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c,RoutedModel m,LanguageModelRequest q,CancellationToken ct){calls++;var body="{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"r\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/CustomerProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}";return Task.FromResult(new LanguageModelResponse(body,$"request-{calls}",10,5));}public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();
+    }
+    private sealed class BlockedAdapter:IAiProviderAdapter
+    {
+        public ProviderType ProviderType=>ProviderType.OpenAI;public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c,RoutedModel m,LanguageModelRequest q,CancellationToken ct)=>Task.FromResult(new LanguageModelResponse("{\"type\":\"blocked\",\"calls\":null,\"summary\":null,\"validationNotes\":[],\"knownLimitations\":[],\"blockerCode\":\"missing_repository_evidence\",\"blockerMessage\":\"The required profile contract cannot be located.\",\"missingEvidencePaths\":[\"Profile.cs\"]}","request",10,5));public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c,CancellationToken ct)=>throw new NotSupportedException();
+    }
+    private sealed class ProfileTools(string? root=null):IRepositoryTools
+    {
+        public int PatchCalls{get;private set;}public int DiffCalls{get;private set;}public int ReadCalls{get;private set;}
+        public Task<RepositoryToolResult> ReadFileAsync(WorkspaceReference w,string p,CancellationToken ct){ReadCalls++;var candidate=root is null?null:Path.Combine(root,p.Replace('/',Path.DirectorySeparatorChar));var text=candidate is not null&&File.Exists(candidate)?File.ReadAllText(candidate):p.EndsWith("User.cs")?"class User { public CustomerProfile? CustomerProfile {get;set;} public ServiceProviderProfile? ServiceProviderProfile {get;set;} }":p.Contains("Customer")?"class CustomerProfile { public string FullName {get;set;} = string.Empty; }":"class ServiceProviderProfile { public string FullName {get;set;} = string.Empty; }";return Task.FromResult(new RepositoryToolResult(true,text));}
+        public Task<RepositoryToolResult> SearchTextAsync(WorkspaceReference w,string q,string p,CancellationToken ct)=>Task.FromResult(new RepositoryToolResult(true,q=="FullName"?"backend/src/CustomerProfile.cs: FullName\nbackend/src/ServiceProviderProfile.cs: FullName":"backend/tests/UserTests.cs"));
+        public Task<RepositoryToolResult> ApplyPatchAsync(WorkspaceReference w,string p,CancellationToken ct){PatchCalls++;if(root is not null)File.AppendAllText(Path.Combine(root,"backend","src","HomeTaskSA.Domain","Entities","User.cs"),"\npublic string DisplayName => CustomerProfile?.FullName ?? ServiceProviderProfile?.FullName ?? string.Empty;\n");return Task.FromResult(new RepositoryToolResult(true,"patch applied"));}
+        public Task<RepositoryToolResult> GetDiffAsync(WorkspaceReference w,CancellationToken ct){DiffCalls++;return Task.FromResult(new RepositoryToolResult(true,PatchCalls>0?"diff --git a/backend/src/HomeTaskSA.Domain/Entities/User.cs b/backend/src/HomeTaskSA.Domain/Entities/User.cs\n+DisplayName":""));}
+        public Task<RepositoryToolResult> RunCommandAsync(WorkspaceReference w,RepositoryCommand c,CancellationToken ct)=>Task.FromResult(new RepositoryToolResult(true,"backend/src/HomeTaskSA.Domain/Entities/User.cs"));public Task<RepositoryToolResult> ListFilesAsync(WorkspaceReference w,string p,CancellationToken ct)=>throw new NotSupportedException();
+    }
+    private sealed class TemporaryProfileRepository(string root):IDisposable
+    {
+        public string Root=>root;
+        public static TemporaryProfileRepository Create(){var root=Path.Combine(Path.GetTempPath(),"impersonate-coder-"+Guid.NewGuid().ToString("N"));var entities=Path.Combine(root,"backend","src","HomeTaskSA.Domain","Entities");var tests=Path.Combine(root,"backend","tests","HomeTaskSA.Domain.Tests");Directory.CreateDirectory(entities);Directory.CreateDirectory(tests);File.WriteAllText(Path.Combine(entities,"User.cs"),"class User { public CustomerProfile? CustomerProfile {get;set;} public ServiceProviderProfile? ServiceProviderProfile {get;set;} }");File.WriteAllText(Path.Combine(root,"backend","src","CustomerProfile.cs"),"class CustomerProfile { public string FullName {get;set;} = string.Empty; }");File.WriteAllText(Path.Combine(root,"backend","src","ServiceProviderProfile.cs"),"class ServiceProviderProfile { public string FullName {get;set;} = string.Empty; }");File.WriteAllText(Path.Combine(tests,"UserTests.cs"),"class UserTests { }");return new(root);}
+        public void Dispose(){if(Directory.Exists(root))Directory.Delete(root,true);}
     }
     private sealed class CredentialStore : IProviderCredentialStore
     {
