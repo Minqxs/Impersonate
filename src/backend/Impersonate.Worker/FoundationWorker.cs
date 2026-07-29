@@ -1,52 +1,172 @@
-using Impersonate.Application.Planning;
+using System.Text.Json;
 using Impersonate.Application.Ai;
+using Impersonate.Application.Planning;
+using Impersonate.Domain.Ai;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Impersonate.Domain.Ai;
-using System.Text.Json;
 
 namespace Impersonate.Worker;
-public sealed class FoundationWorker(IServiceScopeFactory scopes,IOptions<PlannerOptions> options,ILogger<FoundationWorker> logger):BackgroundService
+
+public sealed class FoundationWorker(IServiceScopeFactory scopes, IOptions<PlannerOptions> options, ILogger<FoundationWorker> logger) : BackgroundService
 {
- protected override async Task ExecuteAsync(CancellationToken stoppingToken)
- {
-  logger.LogInformation("Planner worker started with persisted model routing and environment fallback enabled.");
-  using var timer=new PeriodicTimer(TimeSpan.FromSeconds(options.Value.PollIntervalSeconds));
-  do { try{await ProcessOneAsync(stoppingToken);}catch(OperationCanceledException) when(stoppingToken.IsCancellationRequested){}catch(Exception ex){logger.LogError(ex,"Planner polling cycle failed.");} } while(await timer.WaitForNextTickAsync(stoppingToken));
- }
- private async Task ProcessOneAsync(CancellationToken ct)
- {
-  using var scope=scopes.CreateScope();var db=scope.ServiceProvider.GetRequiredService<ImpersonateDbContext>();var agent=scope.ServiceProvider.GetRequiredService<IPlannerAgent>();var now=DateTimeOffset.UtcNow;
-  await using var claimTx=await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable,ct);
-  var run=await db.PipelineRuns.AsSplitQuery().Include(x=>x.LoopRun).Include(x=>x.Tasks).Include(x=>x.Events).Where(x=>x.Status==PipelineRunStatus.Planning&&(x.PlanningClaimExpiresAtUtc==null||x.PlanningClaimExpiresAtUtc<now)).OrderBy(x=>x.CreatedAtUtc).FirstOrDefaultAsync(ct);
-  if(run is null){await claimTx.RollbackAsync(ct);return;}
-  var claim=Guid.NewGuid();var lease=TimeSpan.FromSeconds((options.Value.TimeoutSeconds+30)*options.Value.MaximumPlanningAttempts);run.ClaimPlanning(claim,Environment.MachineName,now.Add(lease),now);await db.SaveChangesAsync(ct);await claimTx.CommitAsync(ct);
-  var project=await db.Projects.SingleAsync(x=>x.Id==run.ProjectId,ct);var decision=await db.ModelSelectionDecisions.OrderByDescending(x=>x.CreatedAtUtc).FirstAsync(x=>x.ProjectId==run.ProjectId&&x.PipelineRunId==run.Id&&x.Role==AgentRole.Planner,ct);var router=scope.ServiceProvider.GetRequiredService<IModelRouter>();var contextService=scope.ServiceProvider.GetRequiredService<IPlanningRepositoryContextService>();var orderService=scope.ServiceProvider.GetRequiredService<IExecutionOrderService>();var contextResult=await contextService.BuildAsync(project.Id,run.Id,project.RepositoryUrl,project.DefaultBranch,run.FeatureRequest,ct);if(!contextResult.Succeeded){run.Fail(contextResult.FailureMessage??"Planning repository context could not be built.");run.ClearPlanningClaim();await db.SaveChangesAsync(ct);return;}var repositoryContext=contextResult.Context!;run.RecordPlanningContext(repositoryContext.ArtifactReference!,repositoryContext.Summary,repositoryContext.Languages,repositoryContext.Frameworks);await db.SaveChangesAsync(ct);var prior=await db.PlanningAttempts.CountAsync(x=>x.PipelineRunId==run.Id,ct);PlannerCorrectionContext? correction=null;var excludedModels=new HashSet<Guid>();
-  async Task<bool> RerouteAsync(string reason){if(decision.SelectionSource!=ModelSelectionSource.AutomaticRouting||decision.DiscoveredModelId is null||!Enum.TryParse<ProviderType>(decision.Provider,out var provider))return false;var models=await db.DiscoveredModels.AsNoTracking().Where(x=>x.ProviderType==provider).ToListAsync(ct);foreach(var model in models.Where(x=>ModelRateLimitFamily.Matches(provider,x.ProviderModelId,decision.Model)))excludedModels.Add(model.Id);var rerouted=await router.SelectAsync(new(project.Id,run.Id,AgentRole.Planner,run.FeatureRequest,ExcludedModels:excludedModels,FeatureRequest:run.FeatureRequest),ct);if(!rerouted.Succeeded||rerouted.Selection is not{} choice)return false;var replacement=ModelSelectionDecision.Create(project.Id,run.Id,AgentRole.Planner,choice.ConnectionId,choice.DiscoveredModelId,choice.ProviderType.ToString(),choice.ProviderModelId,choice.Source,choice.Score,JsonSerializer.Serialize(rerouted.Profile),$"Rerouted after {reason} from {decision.Model}. {choice.Explanation}",JsonSerializer.Serialize(rerouted.EligibleAlternatives.Take(3)),decision.Id,scoreBreakdown:JsonSerializer.Serialize(choice.ScoreBreakdown??[]),metadataVersion:choice.MetadataVersion);db.ModelSelectionDecisions.Add(replacement);await db.SaveChangesAsync(ct);decision=replacement;return true;}
-  for(var number=prior+1;number<=options.Value.MaximumPlanningAttempts;number++)
-  {
-   var attempt=PlanningAttempt.Start(run.Id,number,decision.Provider,decision.Model,options.Value.PromptVersion);db.PlanningAttempts.Add(attempt);await db.SaveChangesAsync(ct);
-   try
-   {
-    ProviderType? routedProvider=decision.ProviderConnectionId is null?null:Enum.Parse<ProviderType>(decision.Provider);var result=await agent.PlanAsync(new(project.Id,project.Name,project.Description,project.RepositoryUrl,project.DefaultBranch,run.FeatureRequest,options.Value.MaximumTasks,options.Value.PromptVersion,correction,decision.ProviderConnectionId,routedProvider,decision.Model,repositoryContext),ct);var previousPlan=result.Plan;var sanitized=PlannerEvidenceSanitizer.Sanitize(previousPlan,repositoryContext.EvidencePaths);result=result with{Plan=sanitized.Plan};var plannedTasks=result.Plan.Tasks??[];logger.LogInformation("Planner response received for project {ProjectId}, pipeline {PipelineId}, attempt {Attempt}: canPlan={CanPlan}, taskCount={TaskCount}.",project.Id,run.Id,number,result.Plan.CanPlan,plannedTasks.Count);var structuralErrors=PlannerPlanValidator.Analyze(result.Plan,options.Value.MaximumTasks,repositoryContext.EvidencePaths);var errors=structuralErrors.Concat(sanitized.UnsupportedEvidence).Take(10).ToList();
-    if(errors.Count>0){if(number==options.Value.MaximumPlanningAttempts&&PlannerEvidenceSanitizer.OnlyEvidenceErrors(errors)){const string warning="Some repository evidence proposed by the Planner was discarded because it was not present in the bounded snapshot.";run.RecordPlanningWarning(warning);await db.SaveChangesAsync(ct);}else{correction=PlannerEvidenceSanitizer.BuildCorrection(errors,previousPlan,repositoryContext.EvidencePaths);var message=string.Join(" ",errors.Select(x=>x.Message));if(message.Length>2000)message=message[..2000];attempt.FailWithUsage(PlanningAttemptStatus.InvalidOutput,"invalid_output",message,result.ProviderRequestId,result.InputTokenCount,result.OutputTokenCount);await db.SaveChangesAsync(ct);if(number<options.Value.MaximumPlanningAttempts)await RerouteAsync("invalid output");continue;}}
-    var ordered=orderService.Order(plannedTasks);if(!ordered.Succeeded){var orderErrors=ordered.Errors.Select(x=>new PlannerValidationError("execution_order_invalid",x)).ToList();correction=PlannerEvidenceSanitizer.BuildCorrection(orderErrors,result.Plan,repositoryContext.EvidencePaths);var message=string.Join(" ",ordered.Errors);attempt.FailWithUsage(PlanningAttemptStatus.InvalidOutput,"invalid_output",message.Length<=2000?message:message[..2000],result.ProviderRequestId,result.InputTokenCount,result.OutputTokenCount);await db.SaveChangesAsync(ct);continue;}await PersistSuccessfulPlanAsync(run.Id,attempt.Id,result,ordered.Tasks,ct);logger.LogInformation("Planning completed for project {ProjectId}, pipeline {PipelineId}, attempt {Attempt}.",project.Id,run.Id,number);return;
-   }
-   catch(ProviderCredentialUnavailableException ex){attempt.Fail(PlanningAttemptStatus.ProviderFailed,ex.Code,ex.Message);run.Fail(ex.Message);run.ClearPlanningClaim();await db.SaveChangesAsync(ct);logger.LogWarning("Planning stopped for project {ProjectId}, pipeline {PipelineId}: provider credential configuration {FailureCode}.",project.Id,run.Id,ex.Code);return;}
-   catch(ProviderRequestException ex){attempt.Fail(PlanningAttemptStatus.ProviderFailed,ex.Code,ex.Message);await db.SaveChangesAsync(ct);logger.LogWarning(ex,"Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId}: provider returned HTTP {StatusCode} ({FailureCode}).",number,project.Id,run.Id,(int)ex.StatusCode,ex.Code);if(ex.IsTransient&&number<options.Value.MaximumPlanningAttempts&&await RerouteAsync(ex.Code))continue;run.Fail(ex.Message);run.ClearPlanningClaim();await db.SaveChangesAsync(ct);return;}
-   catch(OperationCanceledException) when(ct.IsCancellationRequested){attempt.Fail(PlanningAttemptStatus.Cancelled,"cancelled","Planning was cancelled.");await db.SaveChangesAsync(CancellationToken.None);throw;}
-   catch(Exception ex){if(attempt.Status!=PlanningAttemptStatus.Started){logger.LogError(ex,"Planning failed after attempt {Attempt} became terminal for project {ProjectId}, pipeline {PipelineId}; preserving the original failure.",number,project.Id,run.Id);throw;}var timedOut=ex is TaskCanceledException;attempt.Fail(timedOut?PlanningAttemptStatus.TimedOut:PlanningAttemptStatus.ProviderFailed,timedOut?"provider_timeout":"provider_failed",timedOut?"The configured planner provider timed out.":$"The planner failed while processing the provider response ({ex.GetType().Name}).");await db.SaveChangesAsync(ct);logger.LogWarning(ex,"Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId} ({FailureType}).",number,project.Id,run.Id,ex.GetType().Name);}
-  }
-  run.Fail("Planning attempts were exhausted.");run.ClearPlanningClaim();await db.SaveChangesAsync(ct);
- }
- private async Task PersistSuccessfulPlanAsync(Guid runId,Guid attemptId,PlannerAgentResult result,IReadOnlyList<OrderedPlannerTask> plannedTasks,CancellationToken ct)
- {
-  using var persistenceScope=scopes.CreateScope();var persistenceDb=persistenceScope.ServiceProvider.GetRequiredService<ImpersonateDbContext>();await using var transaction=await persistenceDb.Database.BeginTransactionAsync(ct);
-  var persistedRun=await persistenceDb.PipelineRuns.AsSplitQuery().Include(x=>x.LoopRun).Include(x=>x.Tasks).Include(x=>x.Events).SingleAsync(x=>x.Id==runId,ct);
-  var persistedAttempt=await persistenceDb.PlanningAttempts.SingleAsync(x=>x.Id==attemptId,ct);
-  if(!result.Plan.CanPlan)persistedRun.RequireClarification(result.Plan.FailureReason!,result.Plan.ClarifyingQuestion!);else{var created=new Dictionary<int,PlannedTask>();foreach(var ordered in plannedTasks.OrderBy(x=>x.ExecutionSequence)){var candidate=ordered.Task;created[ordered.OriginalSequence]=persistedRun.AddTask(ordered.ExecutionSequence,candidate.Title,candidate.Description,candidate.AcceptanceCriteria);}foreach(var ordered in plannedTasks){var candidate=ordered.Task;created[ordered.OriginalSequence].SetIntelligence((candidate.DependsOnSequences??[]).Select(x=>created[x].Id).ToList(),candidate.AffectedAreas??[],candidate.ChangeType,candidate.Risk,candidate.ConflictRisk,candidate.ExecutionReason??(ordered.ExecutionSequence==1?"Establishes the first implementation step.":"Follows its declared dependencies."),candidate.RepositoryEvidence??[],ordered.OriginalSequence,ordered.OrderAdjusted,ordered.AdjustmentReason,candidate.EstablishesSharedContract);}persistedRun.MarkReadyForExecution();}
-  persistedAttempt.Succeed(result.ProviderRequestId,result.InputTokenCount,result.OutputTokenCount);await persistenceDb.SaveChangesAsync(ct);await transaction.CommitAsync(ct);
- }
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        logger.LogInformation("Planner worker started with persisted model routing and environment fallback enabled.");
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(options.Value.PollIntervalSeconds));
+        do
+        {
+            try
+            {
+                await ProcessOneAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception ex) { logger.LogError(ex, "Planner polling cycle failed."); }
+        } while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+    private async Task ProcessOneAsync(CancellationToken ct)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ImpersonateDbContext>();
+        var agent = scope.ServiceProvider.GetRequiredService<IPlannerAgent>();
+        var now = DateTimeOffset.UtcNow;
+        await using var claimTx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var run = await db.PipelineRuns.AsSplitQuery().Include(x => x.LoopRun).Include(x => x.Tasks).Include(x => x.Events).Where(x => x.Status == PipelineRunStatus.Planning && (x.PlanningClaimExpiresAtUtc == null || x.PlanningClaimExpiresAtUtc < now)).OrderBy(x => x.CreatedAtUtc).FirstOrDefaultAsync(ct);
+        if (run is null)
+        {
+            await claimTx.RollbackAsync(ct);
+            return;
+        }
+        var claim = Guid.NewGuid();
+        var lease = TimeSpan.FromSeconds((options.Value.TimeoutSeconds + 30) * options.Value.MaximumPlanningAttempts);
+        run.ClaimPlanning(claim, Environment.MachineName, now.Add(lease), now);
+        await db.SaveChangesAsync(ct);
+        await claimTx.CommitAsync(ct);
+        var project = await db.Projects.SingleAsync(x => x.Id == run.ProjectId, ct);
+        var decision = await db.ModelSelectionDecisions.OrderByDescending(x => x.CreatedAtUtc).FirstAsync(x => x.ProjectId == run.ProjectId && x.PipelineRunId == run.Id && x.Role == AgentRole.Planner, ct);
+        var router = scope.ServiceProvider.GetRequiredService<IModelRouter>();
+        var contextService = scope.ServiceProvider.GetRequiredService<IPlanningRepositoryContextService>();
+        var orderService = scope.ServiceProvider.GetRequiredService<IExecutionOrderService>();
+        var contextResult = await contextService.BuildAsync(project.Id, run.Id, project.RepositoryUrl, project.DefaultBranch, run.FeatureRequest, ct);
+        if (!contextResult.Succeeded)
+        {
+            run.Fail(contextResult.FailureMessage ?? "Planning repository context could not be built.");
+            run.ClearPlanningClaim();
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+        var repositoryContext = contextResult.Context!;
+        run.RecordPlanningContext(repositoryContext.ArtifactReference!, repositoryContext.Summary, repositoryContext.Languages, repositoryContext.Frameworks);
+        await db.SaveChangesAsync(ct);
+        var prior = await db.PlanningAttempts.CountAsync(x => x.PipelineRunId == run.Id, ct);
+        PlannerCorrectionContext? correction = null;
+        var excludedModels = new HashSet<Guid>();
+        async Task<bool> RerouteAsync(string reason)
+        {
+            if (decision.SelectionSource != ModelSelectionSource.AutomaticRouting || decision.DiscoveredModelId is null || !Enum.TryParse<ProviderType>(decision.Provider, out var provider))
+                return false;
+            var models = await db.DiscoveredModels.AsNoTracking().Where(x => x.ProviderType == provider).ToListAsync(ct);
+            foreach (var model in models.Where(x => ModelRateLimitFamily.Matches(provider, x.ProviderModelId, decision.Model)))
+                excludedModels.Add(model.Id);
+            var rerouted = await router.SelectAsync(new(project.Id, run.Id, AgentRole.Planner, run.FeatureRequest, ExcludedModels: excludedModels, FeatureRequest: run.FeatureRequest), ct);
+            if (!rerouted.Succeeded || rerouted.Selection is not { } choice)
+                return false;
+            var replacement = ModelSelectionDecision.Create(project.Id, run.Id, AgentRole.Planner, choice.ConnectionId, choice.DiscoveredModelId, choice.ProviderType.ToString(), choice.ProviderModelId, choice.Source, choice.Score, JsonSerializer.Serialize(rerouted.Profile), $"Rerouted after {reason} from {decision.Model}. {choice.Explanation}", JsonSerializer.Serialize(rerouted.EligibleAlternatives.Take(3)), decision.Id, scoreBreakdown: JsonSerializer.Serialize(choice.ScoreBreakdown ?? []), metadataVersion: choice.MetadataVersion);
+            db.ModelSelectionDecisions.Add(replacement);
+            await db.SaveChangesAsync(ct);
+            decision = replacement;
+            return true;
+        }
+        for (var number = prior + 1; number <= options.Value.MaximumPlanningAttempts; number++)
+        {
+            var attempt = PlanningAttempt.Start(run.Id, number, decision.Provider, decision.Model, options.Value.PromptVersion);
+            db.PlanningAttempts.Add(attempt);
+            await db.SaveChangesAsync(ct);
+            try
+            {
+                ProviderType? routedProvider = decision.ProviderConnectionId is null ? null : Enum.Parse<ProviderType>(decision.Provider);
+                var result = await agent.PlanAsync(new(project.Id, project.Name, project.Description, project.RepositoryUrl, project.DefaultBranch, run.FeatureRequest, options.Value.MaximumTasks, options.Value.PromptVersion, correction, decision.ProviderConnectionId, routedProvider, decision.Model, repositoryContext), ct);
+                var previousPlan = result.Plan;
+                var sanitized = PlannerEvidenceSanitizer.Sanitize(previousPlan, repositoryContext.EvidencePaths);
+                result = result with
+                {
+                    Plan = sanitized.Plan
+                };
+                var plannedTasks = result.Plan.Tasks ?? [];
+                logger.LogInformation("Planner response received for project {ProjectId}, pipeline {PipelineId}, attempt {Attempt}: canPlan={CanPlan}, taskCount={TaskCount}.", project.Id, run.Id, number, result.Plan.CanPlan, plannedTasks.Count);
+                var structuralErrors = PlannerPlanValidator.Analyze(result.Plan, options.Value.MaximumTasks, repositoryContext.EvidencePaths);
+                var errors = structuralErrors.Concat(sanitized.UnsupportedEvidence).Take(10).ToList();
+                if (errors.Count > 0)
+                {
+                    if (number == options.Value.MaximumPlanningAttempts && PlannerEvidenceSanitizer.OnlyEvidenceErrors(errors))
+                    {
+                        const string warning = "Some repository evidence proposed by the Planner was discarded because it was not present in the bounded snapshot.";
+                        run.RecordPlanningWarning(warning);
+                        await db.SaveChangesAsync(ct);
+                    }
+                    else
+                    {
+                        correction = PlannerEvidenceSanitizer.BuildCorrection(errors, previousPlan, repositoryContext.EvidencePaths);
+                        var message = string.Join(" ", errors.Select(x => x.Message));
+                        if (message.Length > 2000)
+                            message = message[..2000];
+                        attempt.FailWithUsage(PlanningAttemptStatus.InvalidOutput, "invalid_output", message, result.ProviderRequestId, result.InputTokenCount, result.OutputTokenCount);
+                        await db.SaveChangesAsync(ct);
+                        if (number < options.Value.MaximumPlanningAttempts)
+                            await RerouteAsync("invalid output");
+                        continue;
+                    }
+                }
+                var ordered = orderService.Order(plannedTasks);
+                if (!ordered.Succeeded)
+                {
+                    var orderErrors = ordered.Errors.Select(x => new PlannerValidationError("execution_order_invalid", x)).ToList();
+                    correction = PlannerEvidenceSanitizer.BuildCorrection(orderErrors, result.Plan, repositoryContext.EvidencePaths);
+                    var message = string.Join(" ", ordered.Errors);
+                    attempt.FailWithUsage(PlanningAttemptStatus.InvalidOutput, "invalid_output", message.Length <= 2000 ? message : message[..2000], result.ProviderRequestId, result.InputTokenCount, result.OutputTokenCount);
+                    await db.SaveChangesAsync(ct);
+                    continue;
+                }
+                await PersistSuccessfulPlanAsync(run.Id, attempt.Id, result, ordered.Tasks, ct);
+                logger.LogInformation("Planning completed for project {ProjectId}, pipeline {PipelineId}, attempt {Attempt}.", project.Id, run.Id, number);
+                return;
+            }
+            catch (ProviderCredentialUnavailableException ex) { attempt.Fail(PlanningAttemptStatus.ProviderFailed, ex.Code, ex.Message); run.Fail(ex.Message); run.ClearPlanningClaim(); await db.SaveChangesAsync(ct); logger.LogWarning("Planning stopped for project {ProjectId}, pipeline {PipelineId}: provider credential configuration {FailureCode}.", project.Id, run.Id, ex.Code); return; }
+            catch (ProviderRequestException ex) { attempt.Fail(PlanningAttemptStatus.ProviderFailed, ex.Code, ex.Message); await db.SaveChangesAsync(ct); logger.LogWarning(ex, "Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId}: provider returned HTTP {StatusCode} ({FailureCode}).", number, project.Id, run.Id, (int)ex.StatusCode, ex.Code); if (ex.IsTransient && number < options.Value.MaximumPlanningAttempts && await RerouteAsync(ex.Code)) continue; run.Fail(ex.Message); run.ClearPlanningClaim(); await db.SaveChangesAsync(ct); return; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { attempt.Fail(PlanningAttemptStatus.Cancelled, "cancelled", "Planning was cancelled."); await db.SaveChangesAsync(CancellationToken.None); throw; }
+            catch (Exception ex) { if (attempt.Status != PlanningAttemptStatus.Started) { logger.LogError(ex, "Planning failed after attempt {Attempt} became terminal for project {ProjectId}, pipeline {PipelineId}; preserving the original failure.", number, project.Id, run.Id); throw; } var timedOut = ex is TaskCanceledException; attempt.Fail(timedOut ? PlanningAttemptStatus.TimedOut : PlanningAttemptStatus.ProviderFailed, timedOut ? "provider_timeout" : "provider_failed", timedOut ? "The configured planner provider timed out." : $"The planner failed while processing the provider response ({ex.GetType().Name})."); await db.SaveChangesAsync(ct); logger.LogWarning(ex, "Planning attempt {Attempt} failed for project {ProjectId}, pipeline {PipelineId} ({FailureType}).", number, project.Id, run.Id, ex.GetType().Name); }
+        }
+        run.Fail("Planning attempts were exhausted.");
+        run.ClearPlanningClaim();
+        await db.SaveChangesAsync(ct);
+    }
+    private async Task PersistSuccessfulPlanAsync(Guid runId, Guid attemptId, PlannerAgentResult result, IReadOnlyList<OrderedPlannerTask> plannedTasks, CancellationToken ct)
+    {
+        using var persistenceScope = scopes.CreateScope();
+        var persistenceDb = persistenceScope.ServiceProvider.GetRequiredService<ImpersonateDbContext>();
+        await using var transaction = await persistenceDb.Database.BeginTransactionAsync(ct);
+        var persistedRun = await persistenceDb.PipelineRuns.AsSplitQuery().Include(x => x.LoopRun).Include(x => x.Tasks).Include(x => x.Events).SingleAsync(x => x.Id == runId, ct);
+        var persistedAttempt = await persistenceDb.PlanningAttempts.SingleAsync(x => x.Id == attemptId, ct);
+        if (!result.Plan.CanPlan)
+            persistedRun.RequireClarification(result.Plan.FailureReason!, result.Plan.ClarifyingQuestion!);
+        else
+        {
+            var created = new Dictionary<int, PlannedTask>();
+            foreach (var ordered in plannedTasks.OrderBy(x => x.ExecutionSequence))
+            {
+                var candidate = ordered.Task;
+                created[ordered.OriginalSequence] = persistedRun.AddTask(ordered.ExecutionSequence, candidate.Title, candidate.Description, candidate.AcceptanceCriteria);
+            }
+            foreach (var ordered in plannedTasks)
+            {
+                var candidate = ordered.Task;
+                created[ordered.OriginalSequence].SetIntelligence((candidate.DependsOnSequences ?? []).Select(x => created[x].Id).ToList(), candidate.AffectedAreas ?? [], candidate.ChangeType, candidate.Risk, candidate.ConflictRisk, candidate.ExecutionReason ?? (ordered.ExecutionSequence == 1 ? "Establishes the first implementation step." : "Follows its declared dependencies."), candidate.RepositoryEvidence ?? [], ordered.OriginalSequence, ordered.OrderAdjusted, ordered.AdjustmentReason, candidate.EstablishesSharedContract);
+            }
+            persistedRun.MarkReadyForExecution();
+        }
+        persistedAttempt.Succeed(result.ProviderRequestId, result.InputTokenCount, result.OutputTokenCount);
+        await persistenceDb.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+    }
 }

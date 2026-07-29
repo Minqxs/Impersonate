@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Application.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.IntegrationTests", "tests\\Impersonate.IntegrationTests\\Impersonate.IntegrationTests.csproj", "{7A3F3836-0405-4DC3-A7AC-AC0BA3E02E20}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Impersonate.Architecture.Tests", "tests\\Impersonate.Architecture.Tests\\Impersonate.Architecture.Tests.csproj", "{BF04002D-9BE5-47C9-8952-E219FC78F872}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -40,5 +42,7 @@ Global
 		{E3FA4292-31DD-43E5-9E2D-90ACD4EB0259}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7A3F3836-0405-4DC3-A7AC-AC0BA3E02E20}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7A3F3836-0405-4DC3-A7AC-AC0BA3E02E20}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BF04002D-9BE5-47C9-8952-E219FC78F872}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BF04002D-9BE5-47C9-8952-E219FC78F872}.Debug|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 EndGlobal

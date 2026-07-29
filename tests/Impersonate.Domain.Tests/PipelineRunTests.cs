@@ -1,25 +1,261 @@
 using Impersonate.Domain.Pipelines;
 using Xunit;
 namespace Impersonate.Domain.Tests;
+
 public sealed class PipelineRunTests
 {
- [Fact] public void Individual_task_execution_claims_only_selected_task_and_returns_to_ready_after_approval(){var r=PipelineRun.Create(Guid.NewGuid(),"Feature");r.StartPlanning();var first=r.AddTask(1,"First","First",["Done"]);var second=r.AddTask(2,"Second","Second",["Done"]);r.MarkReadyForExecution();r.StartTaskExecution(first);var claimed=r.ClaimNextTask(Guid.NewGuid(),"worker",DateTimeOffset.UtcNow.AddMinutes(1));Assert.Equal(first.Id,claimed.Id);claimed.CompleteAttempt("done");r.MoveTaskToReview(claimed);r.RecordReview(claimed,ReviewDecisionType.Approved,"approved");r.FinishApprovedTask(claimed);Assert.Equal(PipelineRunStatus.ReadyForExecution,r.Status);Assert.Equal(PlannedTaskStatus.Pending,second.Status);}
- [Fact] public void Failed_individual_task_can_retry_without_losing_attempt_history(){var r=PipelineRun.Create(Guid.NewGuid(),"Feature");r.StartPlanning();var task=r.AddTask(1,"First","First",["Done"]);r.MarkReadyForExecution();r.StartTaskExecution(task);var claimed=r.ClaimNextTask(Guid.NewGuid(),"worker",DateTimeOffset.UtcNow.AddMinutes(1));claimed.Attempts.Last().Fail("provider","failed");r.ResolveExecutionFailure(claimed,"provider: failed");Assert.Equal(PipelineRunStatus.ReadyForExecution,r.Status);r.StartTaskExecution(task);claimed=r.ClaimNextTask(Guid.NewGuid(),"worker",DateTimeOffset.UtcNow.AddMinutes(1));Assert.Equal(2,claimed.Attempts.Count);}
-    [Fact] public void Successful_planning_moves_to_ready_and_coding_stage(){var run=PipelineRun.Create(Guid.NewGuid(),"Plan this");run.StartPlanning();run.AddTask(1,"Domain state","Add state",["State is persisted"]);run.MarkReadyForExecution();Assert.Equal(PipelineRunStatus.ReadyForExecution,run.Status);Assert.Equal(LoopStage.Coding,run.LoopRun.CurrentStage);}
-    [Fact] public void Ambiguous_plan_waits_for_clarification_without_tasks(){var run=PipelineRun.Create(Guid.NewGuid(),"Unclear");run.StartPlanning();run.RequireClarification("Ambiguous","What behaviour is expected?");Assert.Equal(PipelineRunStatus.WaitingForClarification,run.Status);Assert.Empty(run.Tasks);}
- [Fact] public void Creation_snapshots_policy_and_records_event(){var r=PipelineRun.Create(Guid.NewGuid(),"Deliver health endpoint",3,true);Assert.Equal(PipelineRunStatus.Created,r.Status);Assert.Equal(3,r.LoopRun.MaximumRevisionAttempts);Assert.Equal("PipelineCreated",Assert.Single(r.Events).EventType);}
- [Fact] public void Straight_approval_requires_review_before_commit(){var r=PipelineRun.Create(Guid.NewGuid(),"Feature");r.StartPlanning();var t=r.AddTask(1,"Implement","Do work");r.MarkReadyForExecution();r.StartExecution();t.StartCoding();Assert.Throws<InvalidOperationException>(()=>t.StartCommit());t.CompleteAttempt("done");t.SubmitForReview();t.Review(ReviewDecisionType.Approved,"good");t.StartCommit();t.MarkCommitted();r.Complete();Assert.Equal(PipelineRunStatus.Completed,r.Status);}
- [Fact] public void Revision_is_capped_and_exhausted_task_can_be_skipped(){var r=PipelineRun.Create(Guid.NewGuid(),"Feature",1,true);r.StartPlanning();var t=r.AddTask(1,"Implement","Do work");r.AddTask(2,"Continue","Remaining work");r.MarkReadyForExecution();r.StartExecution();t.StartCoding();t.CompleteAttempt("v1");t.SubmitForReview();t.Review(ReviewDecisionType.ChangesRequested,"revise","fix it");t.StartRevision();t.CompleteAttempt("v2");t.SubmitForReview();t.Review(ReviewDecisionType.ChangesRequested,"still wrong","fix again");Assert.Throws<InvalidOperationException>(()=>t.StartRevision());t.Skip("Retry limit reached.");Assert.Equal(PlannedTaskStatus.Pending,r.Tasks[1].Status);}
- [Fact] public void Terminal_pipeline_cannot_reopen(){var r=PipelineRun.Create(Guid.NewGuid(),"Feature");r.Cancel();Assert.Throws<InvalidOperationException>(()=>r.StartPlanning());Assert.Throws<InvalidOperationException>(()=>r.Cancel());}
- [Fact] public void Duplicate_sequence_is_rejected(){var r=PipelineRun.Create(Guid.NewGuid(),"Feature");r.StartPlanning();r.AddTask(1,"One","First");Assert.Throws<InvalidOperationException>(()=>r.AddTask(1,"Two","Second"));}
- [Fact] public void Claimed_tasks_execute_sequentially_and_finish_ready_for_delivery(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(2);var first=r.ClaimNextTask(Guid.NewGuid(),"worker-1",now.AddMinutes(10),now);Assert.Equal(1,first.Sequence);first.CompleteAttempt("implemented");r.MoveTaskToReview(first);r.RecordReview(first,ReviewDecisionType.Approved,"approved");r.FinishApprovedTask(first);var second=r.ClaimNextTask(Guid.NewGuid(),"worker-1",now.AddMinutes(11),now.AddMinutes(1));Assert.Equal(2,second.Sequence);second.CompleteAttempt("implemented");r.MoveTaskToReview(second);r.RecordReview(second,ReviewDecisionType.Approved,"approved");r.FinishApprovedTask(second);Assert.Equal(PipelineRunStatus.ReadyForDelivery,r.Status);Assert.Equal(LoopStage.Committing,r.LoopRun.CurrentStage);}
- [Fact] public void New_revision_review_supersedes_the_previous_review(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(1,2);var task=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);task.CompleteAttempt("first");r.MoveTaskToReview(task);var first=r.RecordReview(task,ReviewDecisionType.ChangesRequested,"needs work","Fix validation");r.ClearExecutionClaim();task=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(6),now.AddMinutes(1));task.CompleteAttempt("revised");r.MoveTaskToReview(task);var current=r.RecordReview(task,ReviewDecisionType.Approved,"fixed");Assert.False(first.IsCurrent);Assert.True(current.IsCurrent);Assert.Equal(1,task.RevisionCount);}
- [Fact] public void Retry_exhaustion_skips_when_continuation_is_enabled(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(2,0,true);var task=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);task.CompleteAttempt("attempt");r.MoveTaskToReview(task);r.RecordReview(task,ReviewDecisionType.ChangesRequested,"incomplete","Add tests");r.ResolveRetryExhaustion(task,"Retry limit reached");Assert.Equal(PlannedTaskStatus.Skipped,task.Status);Assert.Equal(PipelineRunStatus.Executing,r.Status);}
- [Fact] public void Retry_exhaustion_fails_when_continuation_is_disabled(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(1,0,false);var task=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);task.CompleteAttempt("attempt");r.MoveTaskToReview(task);r.RecordReview(task,ReviewDecisionType.ChangesRequested,"incomplete","Add tests");r.ResolveRetryExhaustion(task,"Retry limit reached");Assert.Equal(PlannedTaskStatus.Failed,task.Status);Assert.Equal(PipelineRunStatus.Failed,r.Status);Assert.Equal(LoopRunStatus.Failed,r.LoopRun.Status);}
- [Fact] public void Expired_claim_is_recovered_without_duplicate_attempt(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(1);var task=r.ClaimNextTask(Guid.NewGuid(),"worker-1",now.AddSeconds(1),now);var reclaimed=r.ClaimNextTask(Guid.NewGuid(),"worker-2",now.AddMinutes(2),now.AddSeconds(2));Assert.Same(task,reclaimed);Assert.Single(task.Attempts);Assert.Equal("worker-2",r.ExecutionWorkerId);}
- [Fact] public void Cancellation_clears_execution_claim(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(1);r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);r.Cancel(now.AddSeconds(1));Assert.Null(r.ExecutionClaimId);Assert.Equal(PlannedTaskStatus.Cancelled,r.Tasks[0].Status);}
- [Fact] public void Workspace_failure_blocks_run_without_skipping_or_consuming_attempt(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(2);var task=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);r.BlockForInfrastructure(task,"repository_dns_failed","DNS failed",now);Assert.Equal(PipelineRunStatus.WaitingForInfrastructure,r.Status);Assert.All(r.Tasks,x=>Assert.Equal(PlannedTaskStatus.Pending,x.Status));Assert.Empty(task.Attempts);Assert.Equal(0,task.RevisionCount);Assert.Equal(task.Id,r.InfrastructureBlockedTaskId);}
- [Fact] public void Infrastructure_retry_resumes_same_task_and_rejects_invalid_retry(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(2);var task=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);r.BlockForInfrastructure(task,"repository_dns_failed","DNS failed",now);r.RetryInfrastructure(now.AddSeconds(1));var resumed=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(6),now.AddSeconds(2));Assert.Equal(task.Id,resumed.Id);Assert.Single(resumed.Attempts);Assert.Throws<InvalidOperationException>(()=>r.RetryInfrastructure());}
- [Fact] public void Infrastructure_retry_preserves_approved_earlier_work(){var now=DateTimeOffset.UtcNow;var r=ExecutableRun(2);var first=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(5),now);first.CompleteAttempt("done");r.MoveTaskToReview(first);r.RecordReview(first,ReviewDecisionType.Approved,"approved");r.FinishApprovedTask(first);var second=r.ClaimNextTask(Guid.NewGuid(),"worker",now.AddMinutes(6),now.AddSeconds(1));r.BlockForInfrastructure(second,"repository_dns_failed","DNS failed",now.AddSeconds(1));r.RetryInfrastructure();Assert.Equal(PlannedTaskStatus.Approved,first.Status);Assert.Equal(PlannedTaskStatus.Pending,second.Status);}
- private static PipelineRun ExecutableRun(int taskCount,int maxRevisions=3,bool continueOnFailure=true){var r=PipelineRun.Create(Guid.NewGuid(),"Feature",maxRevisions,continueOnFailure);r.StartPlanning();for(var i=1;i<=taskCount;i++)r.AddTask(i,$"Task {i}","Do work",["Work is complete"]);r.MarkReadyForExecution();r.StartExecution();return r;}
+    [Fact]
+    public void Individual_task_execution_claims_only_selected_task_and_returns_to_ready_after_approval()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature");
+        r.StartPlanning();
+        var first = r.AddTask(1, "First", "First", ["Done"]);
+        var second = r.AddTask(2, "Second", "Second", ["Done"]);
+        r.MarkReadyForExecution();
+        r.StartTaskExecution(first);
+        var claimed = r.ClaimNextTask(Guid.NewGuid(), "worker", DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.Equal(first.Id, claimed.Id);
+        claimed.CompleteAttempt("done");
+        r.MoveTaskToReview(claimed);
+        r.RecordReview(claimed, ReviewDecisionType.Approved, "approved");
+        r.FinishApprovedTask(claimed);
+        Assert.Equal(PipelineRunStatus.ReadyForExecution, r.Status);
+        Assert.Equal(PlannedTaskStatus.Pending, second.Status);
+    }
+    [Fact]
+    public void Failed_individual_task_can_retry_without_losing_attempt_history()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature");
+        r.StartPlanning();
+        var task = r.AddTask(1, "First", "First", ["Done"]);
+        r.MarkReadyForExecution();
+        r.StartTaskExecution(task);
+        var claimed = r.ClaimNextTask(Guid.NewGuid(), "worker", DateTimeOffset.UtcNow.AddMinutes(1));
+        claimed.Attempts.Last().Fail("provider", "failed");
+        r.ResolveExecutionFailure(claimed, "provider: failed");
+        Assert.Equal(PipelineRunStatus.ReadyForExecution, r.Status);
+        r.StartTaskExecution(task);
+        claimed = r.ClaimNextTask(Guid.NewGuid(), "worker", DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.Equal(2, claimed.Attempts.Count);
+    }
+    [Fact]
+    public void Successful_planning_moves_to_ready_and_coding_stage()
+    {
+        var run = PipelineRun.Create(Guid.NewGuid(), "Plan this");
+        run.StartPlanning();
+        run.AddTask(1, "Domain state", "Add state", ["State is persisted"]);
+        run.MarkReadyForExecution();
+        Assert.Equal(PipelineRunStatus.ReadyForExecution, run.Status);
+        Assert.Equal(LoopStage.Coding, run.LoopRun.CurrentStage);
+    }
+    [Fact]
+    public void Ambiguous_plan_waits_for_clarification_without_tasks()
+    {
+        var run = PipelineRun.Create(Guid.NewGuid(), "Unclear");
+        run.StartPlanning();
+        run.RequireClarification("Ambiguous", "What behaviour is expected?");
+        Assert.Equal(PipelineRunStatus.WaitingForClarification, run.Status);
+        Assert.Empty(run.Tasks);
+    }
+    [Fact]
+    public void Creation_snapshots_policy_and_records_event()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Deliver health endpoint", 3, true);
+        Assert.Equal(PipelineRunStatus.Created, r.Status);
+        Assert.Equal(3, r.LoopRun.MaximumRevisionAttempts);
+        Assert.Equal("PipelineCreated", Assert.Single(r.Events).EventType);
+    }
+    [Fact]
+    public void Straight_approval_requires_review_before_commit()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature");
+        r.StartPlanning();
+        var t = r.AddTask(1, "Implement", "Do work");
+        r.MarkReadyForExecution();
+        r.StartExecution();
+        t.StartCoding();
+        Assert.Throws<InvalidOperationException>(() => t.StartCommit());
+        t.CompleteAttempt("done");
+        t.SubmitForReview();
+        t.Review(ReviewDecisionType.Approved, "good");
+        t.StartCommit();
+        t.MarkCommitted();
+        r.Complete();
+        Assert.Equal(PipelineRunStatus.Completed, r.Status);
+    }
+    [Fact]
+    public void Revision_is_capped_and_exhausted_task_can_be_skipped()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature", 1, true);
+        r.StartPlanning();
+        var t = r.AddTask(1, "Implement", "Do work");
+        r.AddTask(2, "Continue", "Remaining work");
+        r.MarkReadyForExecution();
+        r.StartExecution();
+        t.StartCoding();
+        t.CompleteAttempt("v1");
+        t.SubmitForReview();
+        t.Review(ReviewDecisionType.ChangesRequested, "revise", "fix it");
+        t.StartRevision();
+        t.CompleteAttempt("v2");
+        t.SubmitForReview();
+        t.Review(ReviewDecisionType.ChangesRequested, "still wrong", "fix again");
+        Assert.Throws<InvalidOperationException>(() => t.StartRevision());
+        t.Skip("Retry limit reached.");
+        Assert.Equal(PlannedTaskStatus.Pending, r.Tasks[1].Status);
+    }
+    [Fact]
+    public void Terminal_pipeline_cannot_reopen()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature");
+        r.Cancel();
+        Assert.Throws<InvalidOperationException>(() => r.StartPlanning());
+        Assert.Throws<InvalidOperationException>(() => r.Cancel());
+    }
+    [Fact]
+    public void Duplicate_sequence_is_rejected()
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature");
+        r.StartPlanning();
+        r.AddTask(1, "One", "First");
+        Assert.Throws<InvalidOperationException>(() => r.AddTask(1, "Two", "Second"));
+    }
+    [Fact]
+    public void Claimed_tasks_execute_sequentially_and_finish_ready_for_delivery()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(2);
+        var first = r.ClaimNextTask(Guid.NewGuid(), "worker-1", now.AddMinutes(10), now);
+        Assert.Equal(1, first.Sequence);
+        first.CompleteAttempt("implemented");
+        r.MoveTaskToReview(first);
+        r.RecordReview(first, ReviewDecisionType.Approved, "approved");
+        r.FinishApprovedTask(first);
+        var second = r.ClaimNextTask(Guid.NewGuid(), "worker-1", now.AddMinutes(11), now.AddMinutes(1));
+        Assert.Equal(2, second.Sequence);
+        second.CompleteAttempt("implemented");
+        r.MoveTaskToReview(second);
+        r.RecordReview(second, ReviewDecisionType.Approved, "approved");
+        r.FinishApprovedTask(second);
+        Assert.Equal(PipelineRunStatus.ReadyForDelivery, r.Status);
+        Assert.Equal(LoopStage.Committing, r.LoopRun.CurrentStage);
+    }
+    [Fact]
+    public void New_revision_review_supersedes_the_previous_review()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(1, 2);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        task.CompleteAttempt("first");
+        r.MoveTaskToReview(task);
+        var first = r.RecordReview(task, ReviewDecisionType.ChangesRequested, "needs work", "Fix validation");
+        r.ClearExecutionClaim();
+        task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(6), now.AddMinutes(1));
+        task.CompleteAttempt("revised");
+        r.MoveTaskToReview(task);
+        var current = r.RecordReview(task, ReviewDecisionType.Approved, "fixed");
+        Assert.False(first.IsCurrent);
+        Assert.True(current.IsCurrent);
+        Assert.Equal(1, task.RevisionCount);
+    }
+    [Fact]
+    public void Retry_exhaustion_skips_when_continuation_is_enabled()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(2, 0, true);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        task.CompleteAttempt("attempt");
+        r.MoveTaskToReview(task);
+        r.RecordReview(task, ReviewDecisionType.ChangesRequested, "incomplete", "Add tests");
+        r.ResolveRetryExhaustion(task, "Retry limit reached");
+        Assert.Equal(PlannedTaskStatus.Skipped, task.Status);
+        Assert.Equal(PipelineRunStatus.Executing, r.Status);
+    }
+    [Fact]
+    public void Retry_exhaustion_fails_when_continuation_is_disabled()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(1, 0, false);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        task.CompleteAttempt("attempt");
+        r.MoveTaskToReview(task);
+        r.RecordReview(task, ReviewDecisionType.ChangesRequested, "incomplete", "Add tests");
+        r.ResolveRetryExhaustion(task, "Retry limit reached");
+        Assert.Equal(PlannedTaskStatus.Failed, task.Status);
+        Assert.Equal(PipelineRunStatus.Failed, r.Status);
+        Assert.Equal(LoopRunStatus.Failed, r.LoopRun.Status);
+    }
+    [Fact]
+    public void Expired_claim_is_recovered_without_duplicate_attempt()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(1);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker-1", now.AddSeconds(1), now);
+        var reclaimed = r.ClaimNextTask(Guid.NewGuid(), "worker-2", now.AddMinutes(2), now.AddSeconds(2));
+        Assert.Same(task, reclaimed);
+        Assert.Single(task.Attempts);
+        Assert.Equal("worker-2", r.ExecutionWorkerId);
+    }
+    [Fact]
+    public void Cancellation_clears_execution_claim()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(1);
+        r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        r.Cancel(now.AddSeconds(1));
+        Assert.Null(r.ExecutionClaimId);
+        Assert.Equal(PlannedTaskStatus.Cancelled, r.Tasks[0].Status);
+    }
+    [Fact]
+    public void Workspace_failure_blocks_run_without_skipping_or_consuming_attempt()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(2);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        r.BlockForInfrastructure(task, "repository_dns_failed", "DNS failed", now);
+        Assert.Equal(PipelineRunStatus.WaitingForInfrastructure, r.Status);
+        Assert.All(r.Tasks, x => Assert.Equal(PlannedTaskStatus.Pending, x.Status));
+        Assert.Empty(task.Attempts);
+        Assert.Equal(0, task.RevisionCount);
+        Assert.Equal(task.Id, r.InfrastructureBlockedTaskId);
+    }
+    [Fact]
+    public void Infrastructure_retry_resumes_same_task_and_rejects_invalid_retry()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(2);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        r.BlockForInfrastructure(task, "repository_dns_failed", "DNS failed", now);
+        r.RetryInfrastructure(now.AddSeconds(1));
+        var resumed = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(6), now.AddSeconds(2));
+        Assert.Equal(task.Id, resumed.Id);
+        Assert.Single(resumed.Attempts);
+        Assert.Throws<InvalidOperationException>(() => r.RetryInfrastructure());
+    }
+    [Fact]
+    public void Infrastructure_retry_preserves_approved_earlier_work()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(2);
+        var first = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        first.CompleteAttempt("done");
+        r.MoveTaskToReview(first);
+        r.RecordReview(first, ReviewDecisionType.Approved, "approved");
+        r.FinishApprovedTask(first);
+        var second = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(6), now.AddSeconds(1));
+        r.BlockForInfrastructure(second, "repository_dns_failed", "DNS failed", now.AddSeconds(1));
+        r.RetryInfrastructure();
+        Assert.Equal(PlannedTaskStatus.Approved, first.Status);
+        Assert.Equal(PlannedTaskStatus.Pending, second.Status);
+    }
+    private static PipelineRun ExecutableRun(int taskCount, int maxRevisions = 3, bool continueOnFailure = true)
+    {
+        var r = PipelineRun.Create(Guid.NewGuid(), "Feature", maxRevisions, continueOnFailure);
+        r.StartPlanning();
+        for (var i = 1; i <= taskCount; i++)
+            r.AddTask(i, $"Task {i}", "Do work", ["Work is complete"]);
+        r.MarkReadyForExecution();
+        r.StartExecution();
+        return r;
+    }
 }

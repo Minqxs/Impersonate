@@ -9,5 +9,5 @@ builder.Services.AddHostedService<FoundationWorker>();
 builder.Services.AddHostedService<TaskExecutionWorker>();
 
 var host = builder.Build();
-host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DataProtection").LogInformation("Data Protection key ring: {DataProtectionKeyRingPath}",host.Services.GetRequiredService<Impersonate.Infrastructure.Ai.DataProtectionKeyRingLocation>().Path);
+host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DataProtection").LogInformation("Data Protection key ring: {DataProtectionKeyRingPath}", host.Services.GetRequiredService<Impersonate.Infrastructure.Ai.DataProtectionKeyRingLocation>().Path);
 await host.RunAsync();
