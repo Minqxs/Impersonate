@@ -1,5 +1,11 @@
 # Execution workspace and tool security
 
+## No-progress and spend boundaries
+
+Coder provider rounds and repository tool steps are separate counters. Repeated read-only rounds trigger one compact mandatory implementation instruction; another no-patch response stops with `coder_no_patch_progress`. Completed non-empty malformed JSON receives at most one transcript-free repair containing only the schema, bounded malformed output, and safe validation details. Refusals, incomplete output, empty output, and exhausted task budgets are never repaired.
+
+Cumulative task budgets span attempts, model fallbacks, same-model retries, and manual retries. They are evaluated before starting more paid work and surface `task_ai_budget_exhausted` when no safe allowance remains. Successful repository diffs remain in the isolated workspace when finalisation needs repair, so a patch is not executed twice.
+
 Each coding attempt receives a fresh workspace beneath `Execution:WorkspaceRoot`, partitioned by project, run, task, and attempt IDs. Development defaults to `%LOCALAPPDATA%\Impersonate\workspaces`; production requires explicit workspace and artifact roots. Only public GitHub HTTPS repositories are supported in this milestone. Private repositories fail safely because GitHub authentication is deliberately deferred.
 
 Only the current task's directly required and transitive approved dependency patches are applied, in deterministic dependency order. Unrelated earlier tasks are not composed merely because they have a lower sequence. After dependency composition, `git add -A` and `git write-tree` establish an index-only baseline and fingerprint without changing `HEAD` or creating a commit. The current task diff is generated against that composed index, so each accepted UTF-8 artifact owns only its task's incremental changes.
