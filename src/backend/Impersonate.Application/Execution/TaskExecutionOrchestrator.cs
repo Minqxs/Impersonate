@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Application.Execution;
 
-internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IProjectRepository projects, IModelRouter router, IAiRoutingRepository ai, IRepositoryWorkspaceService workspaces, IRepositoryTools tools, IExecutionArtifactStore artifacts, IExecutionInvocationStore invocations, ICoderAgent coder, IReviewerAgent reviewer, IOptions<ExecutionOptions> options) : ITaskExecutionOrchestrator
+internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IProjectRepository projects, IModelRouter router, IAiRoutingRepository ai, IRepositoryWorkspaceService workspaces, IRepositoryTools tools, IExecutionArtifactStore artifacts, IExecutionInvocationStore invocations, ICoderAgent coder, IReviewerAgent reviewer, IModelIdentityClassifier identities, IOptions<ExecutionOptions> options) : ITaskExecutionOrchestrator
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -52,6 +52,7 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
         CoderResult coded;
         StoredArtifact patch;
         string diffText;
+        RoutingModelIdentity? selectedCoderIdentity = null;
         if (task.Status == PlannedTaskStatus.Reviewing)
         {
             if (attempt.PatchArtifactReference is null || attempt.PatchSha256 is null)
@@ -63,6 +64,15 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
             diffText = await artifacts.ReadTextAsync(attempt.PatchArtifactReference, 2_000_000, ct);
             patch = new(attempt.PatchArtifactReference, attempt.PatchSha256, System.Text.Encoding.UTF8.GetByteCount(diffText), "text/x-diff", attempt.CompletedAtUtc ?? now);
             coded = new(true, attempt.Summary ?? "Persisted coding attempt", Deserialize(attempt.ChangedFilesJson), Deserialize(attempt.ValidationSummaryJson), attempt.ToolStepCount, attempt.ProviderRequestId, attempt.InputTokenCount, attempt.OutputTokenCount);
+            var coderDecision = await ai.GetDecisionAsync(run.ProjectId, run.Id, attempt.Id, AgentRole.Coder, ct);
+            var recordedModel = coderDecision is { Role: AgentRole.Coder, TaskAttemptId: var decisionAttempt, DiscoveredModelId: { } discovered } && decisionAttempt == attempt.Id
+                ? (await ai.GetModelsAsync(null, ct)).SingleOrDefault(x => x.Id == discovered)
+                : null;
+            if (recordedModel is not null)
+            {
+                var identity = identities.Classify(recordedModel.ProviderType, recordedModel.ProviderModelId);
+                selectedCoderIdentity = new(recordedModel.Id, recordedModel.ProviderType, recordedModel.ProviderModelId, identity.CanonicalFamily, identity.CanonicalFamily, identity.Variant.ToString());
+            }
         }
         else
         {
@@ -105,6 +115,7 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
             diffText = diff.Output;
             patch = await artifacts.WriteTextAsync(scope, "task.patch", diffText, "text/x-diff", ct);
             attempt.RecordExecution(coderSelection.Selection!.ProviderType.ToString(), coderSelection.Selection.ProviderModelId, "coder-v1", coded.ProviderRequestId, coded.InputTokenCount, coded.OutputTokenCount, coded.ToolStepCount, JsonSerializer.Serialize(coded.ChangedFiles), patch.Reference, patch.Sha256, JsonSerializer.Serialize(coded.ValidationNotes));
+            selectedCoderIdentity = ToIdentity(coderSelection.Selection);
             task.CompleteAttempt(coded.Summary);
             run.MoveTaskToReview(task);
             await runs.SaveChangesAsync(ct);
@@ -116,7 +127,7 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
         var reviewerFallback = 0;
         while (true)
         {
-            reviewerSelection = await Select(run, task, attempt, AgentRole.Reviewer, task.ReviewerModelOverrideId, reviewerExcluded, ct);
+            reviewerSelection = await Select(run, task, attempt, AgentRole.Reviewer, task.ReviewerModelOverrideId, reviewerExcluded, ct, selectedCoderIdentity);
             if (!reviewerSelection.Succeeded)
             {
                 await Fail(run, task, attempt, "reviewer_provider_failed", reviewerSelection.FailureMessage ?? "No eligible Reviewer model is available.", ct);
@@ -148,15 +159,12 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
         return true;
     }
 
-    private async Task<ModelSelectionResult> Select(PipelineRun run, PlannedTask task, TaskAttempt attempt, AgentRole role, Guid? overrideId, IReadOnlySet<Guid> excluded, CancellationToken ct)
+    private async Task<ModelSelectionResult> Select(PipelineRun run, PlannedTask task, TaskAttempt attempt, AgentRole role, Guid? overrideId, IReadOnlySet<Guid> excluded, CancellationToken ct, RoutingModelIdentity? selectedCoderIdentity = null)
     {
         var languages = Deserialize(run.PlanningLanguagesJson);
         var frameworks = Deserialize(run.PlanningFrameworksJson);
         var areas = Deserialize(task.AffectedAreasJson);
-        DiscoveredModel? coderSelection = null;
-        if (role == AgentRole.Reviewer && !string.IsNullOrWhiteSpace(attempt.Model))
-            coderSelection = (await ai.GetModelsAsync(null, ct)).FirstOrDefault(x => x.ProviderModelId == attempt.Model && x.ProviderType.ToString() == attempt.Provider);
-        var request = new ModelSelectionRequest(run.ProjectId, run.Id, role, task.Description, overrideId, excluded, TaskTitle: task.Title, AcceptanceCriteria: task.AcceptanceCriteria, FeatureRequest: run.FeatureRequest, RepositoryLanguages: languages, RepositoryFrameworks: frameworks, ChangeType: task.ChangeType, AffectedAreas: areas, Risk: task.Risk, ConflictRisk: task.ConflictRisk, AttemptNumber: attempt.AttemptNumber, RevisionCount: task.RevisionCount, ReviewerFeedback: task.ReviewDecisions.LastOrDefault(x => x.IsCurrent)?.Feedback, CoderModelId: coderSelection?.Id ?? task.CoderModelOverrideId, CoderProvider: coderSelection?.ProviderType);
+        var request = new ModelSelectionRequest(run.ProjectId, run.Id, role, task.Description, overrideId, excluded, TaskTitle: task.Title, AcceptanceCriteria: task.AcceptanceCriteria, FeatureRequest: run.FeatureRequest, RepositoryLanguages: languages, RepositoryFrameworks: frameworks, ChangeType: task.ChangeType, AffectedAreas: areas, Risk: task.Risk, ConflictRisk: task.ConflictRisk, AttemptNumber: attempt.AttemptNumber, RevisionCount: task.RevisionCount, ReviewerFeedback: task.ReviewDecisions.LastOrDefault(x => x.IsCurrent)?.Feedback, CoderIdentity: selectedCoderIdentity);
         var selected = await router.SelectAsync(request, ct);
         if (selected.Succeeded && selected.Selection is { } model)
         {
@@ -166,6 +174,8 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
 
         return selected;
     }
+
+    private static RoutingModelIdentity ToIdentity(SelectedModel model) => new(model.DiscoveredModelId, model.ProviderType, model.ProviderModelId, model.CanonicalFamily ?? "unknown", model.Generation ?? "unknown", model.Specialisation ?? "Unknown");
 
     private static bool IsFallbackEligible(string? code) => code is "provider_rate_limited" or "provider_timeout" or "provider_unavailable" or "provider_overloaded" or "provider_context_limit_exceeded" or "provider_refused";
     private async Task ExcludeFamily(HashSet<Guid> excluded, SelectedModel failed, CancellationToken ct)

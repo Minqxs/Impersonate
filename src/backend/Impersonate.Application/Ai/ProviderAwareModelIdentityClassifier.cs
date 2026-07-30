@@ -5,7 +5,7 @@ namespace Impersonate.Application.Ai;
 
 internal sealed class ProviderAwareModelIdentityClassifier : IModelIdentityClassifier
 {
-    private static readonly System.Text.RegularExpressions.Regex OpenAi = new(@"^(?<base>gpt-(?<generation>4\.1|5(?:\.\d+)?))(?<variant>-mini|-nano|-pro|-codex)?(?<snapshot>-\d{4}-\d{2}-\d{2})?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex OpenAi = new(@"^(?<base>gpt-(?<generation>4\.1|5(?:\.\d+)?))(?<variant>-mini|-nano|-pro|-codex|-sol|-terra|-luna)?(?<snapshot>-\d{4}-\d{2}-\d{2})?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
     public ModelIdentity Classify(ProviderType provider, string modelId)
     {
         var id = (modelId ?? string.Empty).Trim().ToLowerInvariant();
@@ -24,10 +24,13 @@ internal sealed class ProviderAwareModelIdentityClassifier : IModelIdentityClass
                     "-nano" => ModelVariant.Nano,
                     "-pro" => ModelVariant.Pro,
                     "-codex" => ModelVariant.Coding,
+                    "-sol" => ModelVariant.Pro,
+                    "-terra" => ModelVariant.Balanced,
+                    "-luna" => ModelVariant.Mini,
                     _ => ModelVariant.Flagship
                 };
                 var canonical = root + suffix;
-                var endpoint = root.StartsWith("gpt-5", StringComparison.Ordinal) ? ProviderEndpoint.Responses : ProviderEndpoint.ChatCompletions;
+                var endpoint = ProviderEndpoint.Responses;
                 return new(provider, root, canonical, m.Groups["snapshot"].Success ? m.Groups["snapshot"].Value[1..] : null, variant, endpoint, canonical, true);
             }
 

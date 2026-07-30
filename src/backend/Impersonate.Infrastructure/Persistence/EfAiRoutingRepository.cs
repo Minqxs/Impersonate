@@ -11,6 +11,7 @@ internal sealed class EfAiRoutingRepository(ImpersonateDbContext db) : IAiRoutin
     public async Task<IReadOnlyList<DiscoveredModel>> GetModelsAsync(Guid? connection, CancellationToken ct) => await db.DiscoveredModels.Where(x => connection == null || x.ProviderConnectionId == connection).OrderBy(x => x.ProviderModelId).ToListAsync(ct);
     public Task<ProjectAiRoutingPolicy?> GetPolicyAsync(Guid project, CancellationToken ct) => db.ProjectAiRoutingPolicies.SingleOrDefaultAsync(x => x.ProjectId == project, ct);
     public Task<ModelSelectionDecision?> GetDecisionAsync(Guid project, Guid run, CancellationToken ct) => db.ModelSelectionDecisions.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefaultAsync(x => x.ProjectId == project && x.PipelineRunId == run, ct);
+    public Task<ModelSelectionDecision?> GetDecisionAsync(Guid project, Guid run, Guid attempt, AgentRole role, CancellationToken ct) => db.ModelSelectionDecisions.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefaultAsync(x => x.ProjectId == project && x.PipelineRunId == run && x.TaskAttemptId == attempt && x.Role == role, ct);
     public Task AddConnectionAsync(AiProviderConnection connection, CancellationToken ct)
     {
         db.AiProviderConnections.Add(connection);

@@ -9,6 +9,7 @@ public interface IAiRoutingRepository
     Task<IReadOnlyList<DiscoveredModel>> GetModelsAsync(Guid? connectionId, CancellationToken cancellationToken);
     Task<ProjectAiRoutingPolicy?> GetPolicyAsync(Guid projectId, CancellationToken cancellationToken);
     Task<ModelSelectionDecision?> GetDecisionAsync(Guid projectId, Guid runId, CancellationToken cancellationToken);
+    Task<ModelSelectionDecision?> GetDecisionAsync(Guid projectId, Guid runId, Guid taskAttemptId, AgentRole role, CancellationToken cancellationToken) => GetDecisionAsync(projectId, runId, cancellationToken);
     Task AddConnectionAsync(AiProviderConnection connection, CancellationToken cancellationToken);
     Task AddModelAsync(DiscoveredModel model, CancellationToken cancellationToken);
     Task RemoveConnectionAsync(AiProviderConnection connection, CancellationToken cancellationToken);
