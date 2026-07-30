@@ -18,6 +18,10 @@ public sealed class ModelRouterTests
     [InlineData("gpt-4.1-nano", "gpt-4.1-nano", "Nano", true)]
     [InlineData("gpt-5-pro", "gpt-5-pro", "Pro", true)]
     [InlineData("gpt-5-codex", "gpt-5-codex", "Coding", true)]
+    [InlineData("gpt-5.3-codex", "gpt-5.3-codex", "Coding", true)]
+    [InlineData("gpt-5.6-sol", "gpt-5.6-sol", "Pro", true)]
+    [InlineData("gpt-5.6-terra", "gpt-5.6-terra", "Balanced", true)]
+    [InlineData("gpt-5.6-luna", "gpt-5.6-luna", "Mini", true)]
     [InlineData("future-mystery", "future-mystery", "Unknown", false)]
     [InlineData("bad model", "unknown", "Unknown", false)]
     public void OpenAi_identity_rules_are_exact_and_ordered(string id, string canonical, string variant, bool known)
@@ -114,6 +118,46 @@ public sealed class ModelRouterTests
         Assert.True(miniProfile.RepositoryToolReliability > nanoProfile.RepositoryToolReliability);
     }
     [Fact]
+    public void Reviewed_catalog_records_generation_specialisation_endpoint_and_limitations()
+    {
+        var catalog = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<IModelCapabilityCatalog>();
+        var general = catalog.Resolve(ProviderType.OpenAI, "gpt-4.1");
+        var coding = catalog.Resolve(ProviderType.OpenAI, "gpt-5-codex");
+
+        Assert.Equal("catalog-2026-07-v3", coding.MetadataVersion);
+        Assert.Equal(ProviderType.OpenAI, coding.Provider);
+        Assert.Equal("gpt-5", coding.Generation);
+        Assert.Equal("Coding", coding.Specialisation);
+        Assert.Equal(ProviderEndpoint.Responses, coding.Endpoint);
+        Assert.NotEqual(coding.Generation, general.Generation);
+        Assert.NotEqual(coding.KnownLimitations, general.KnownLimitations);
+    }
+    [Theory]
+    [InlineData(RoutingPreference.Quality, "gpt-5-codex")]
+    [InlineData(RoutingPreference.Balanced, "gpt-5-mini")]
+    [InlineData(RoutingPreference.Economy, "gpt-5-mini")]
+    public async Task Coder_policy_uses_reviewed_generation_specialisation_and_cost(RoutingPreference preference, string expected)
+    {
+        var project = Guid.NewGuid();
+        var connection = AiProviderConnection.Create(ProviderType.OpenAI, "OpenAI");
+        connection.Connected();
+        var models = new[]
+        {
+            DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-4.1", "GPT 4.1", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 1_000_000, 32_768),
+            DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-5-codex", "GPT 5 Codex", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 400_000, 128_000),
+            DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-5-mini", "GPT 5 mini", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 400_000, 128_000)
+        };
+        var policy = ProjectAiRoutingPolicy.Create(project);
+        policy.Update(preference, preference, false, true, 1, null, null, "[]", "[]");
+        var services = new ServiceCollection().AddApplication().AddSingleton<IAiRoutingRepository>(new FakeRepository([connection], models, policy)).BuildServiceProvider();
+
+        var result = await services.GetRequiredService<IModelRouter>().SelectAsync(new(project, null, AgentRole.Coder, "Implement a bounded C# repository change", RepositoryLanguages: ["C#"], ChangeType: "DomainModel", ExpectedFileCount: 1), default);
+
+        Assert.True(result.Succeeded, result.FailureMessage);
+        Assert.Equal(expected, result.Selection!.ProviderModelId);
+        Assert.Contains(result.Selection.ScoreBreakdown!, x => x.Name == "Generation and specialization" && x.Score > 0);
+    }
+    [Fact]
     public void OpenAi_alias_and_dated_snapshot_share_rate_limit_family()
     {
         Assert.True(ModelRateLimitFamily.Matches(ProviderType.OpenAI, "gpt-4.1", "gpt-4.1-2025-04-14"));
@@ -173,7 +217,7 @@ public sealed class ModelRouterTests
         Assert.Equal(result.Selection!.Score, result.Selection.ScoreBreakdown!.Sum(x => x.Score));
         Assert.Equal(EngineeringTaskType.ApiEndpoint, result.Profile.TaskType);
         Assert.Contains("C#", result.Profile.Languages!);
-        Assert.Equal("catalog-2026-07-v2", result.Selection.MetadataVersion);
+        Assert.Equal("catalog-2026-07-v3", result.Selection.MetadataVersion);
     }
     [Fact]
     public async Task Reviewer_diversity_bonus_is_transparent_without_breaking_compatibility()
@@ -186,11 +230,83 @@ public sealed class ModelRouterTests
         var first = DiscoveredModel.Create(a.Id, ProviderType.OpenAI, "gpt-4.1", "GPT", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 128000, 8192);
         var second = DiscoveredModel.Create(b.Id, ProviderType.Anthropic, "claude-sonnet-4", "Claude", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 128000, 8192);
         var services = new ServiceCollection().AddApplication().AddSingleton<IAiRoutingRepository>(new FakeRepository([a, b], [first, second], ProjectAiRoutingPolicy.Create(project))).BuildServiceProvider();
-        var result = await services.GetRequiredService<IModelRouter>().SelectAsync(new(project, null, AgentRole.Reviewer, "Review patch", CoderModelId: first.Id, CoderProvider: ProviderType.OpenAI), default);
+        var result = await services.GetRequiredService<IModelRouter>().SelectAsync(new(project, null, AgentRole.Reviewer, "Review patch", CoderIdentity: new(first.Id, ProviderType.OpenAI, first.ProviderModelId, "gpt-4.1", "gpt-4.1", "Flagship")), default);
         Assert.True(result.Succeeded);
         Assert.NotEqual(first.Id, result.Selection!.DiscoveredModelId);
         Assert.Contains(result.Selection.ScoreBreakdown!, x => x.Name == "Reviewer diversity" && x.Score > 0);
         Assert.Contains("materially different", result.Selection.Explanation);
+    }
+    [Fact]
+    public async Task Reviewer_diversity_uses_actual_coder_canonical_family_only()
+    {
+        async Task<ScoreComponent> Diversity(string reviewerModel, RoutingModelIdentity? coder)
+        {
+            var project = Guid.NewGuid();
+            var connection = AiProviderConnection.Create(ProviderType.OpenAI, "OpenAI");
+            connection.Connected();
+            var reviewer = DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, reviewerModel, reviewerModel, null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 400_000, 128_000);
+            var services = new ServiceCollection().AddApplication().AddSingleton<IAiRoutingRepository>(new FakeRepository([connection], [reviewer], ProjectAiRoutingPolicy.Create(project))).BuildServiceProvider();
+            var result = await services.GetRequiredService<IModelRouter>().SelectAsync(new(project, null, AgentRole.Reviewer, "Review patch", CoderIdentity: coder), default);
+            Assert.True(result.Succeeded, result.FailureMessage);
+            return Assert.Single(result.Selection!.ScoreBreakdown!, x => x.Name == "Reviewer diversity");
+        }
+
+        var exact = await Diversity("gpt-4.1", new(Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", "gpt-4.1", "gpt-4.1", "Flagship"));
+        var snapshot = await Diversity("gpt-4.1-2025-04-14", new(Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", "gpt-4.1", "gpt-4.1", "Flagship"));
+        var distinct = await Diversity("gpt-5", new(Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", "gpt-4.1", "gpt-4.1", "Flagship"));
+        var sameFamilyDifferentProvider = await Diversity("gpt-5", new(Guid.NewGuid(), ProviderType.Anthropic, "provider-alias", "gpt-5", "gpt-5", "Flagship"));
+        var unavailable = await Diversity("gpt-5", null);
+
+        Assert.Equal(0, exact.Score);
+        Assert.Equal(0, snapshot.Score);
+        Assert.True(distinct.Score > 0);
+        Assert.Equal(0, sameFamilyDifferentProvider.Score);
+        Assert.Equal(0, unavailable.Score);
+        Assert.Contains("actual selected Coder identity is unavailable", unavailable.Reason);
+    }
+    [Fact]
+    public async Task Genuine_model_tie_is_reported_before_stable_id_ordering()
+    {
+        var project = Guid.NewGuid();
+        var connection = AiProviderConnection.Create(ProviderType.OpenAI, "OpenAI");
+        connection.Connected();
+        var alias = DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-4.1", "GPT 4.1", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 1_000_000, 32_768);
+        var snapshot = DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-4.1-2025-04-14", "GPT 4.1 snapshot", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 1_000_000, 32_768);
+        var services = new ServiceCollection().AddApplication().AddSingleton<IAiRoutingRepository>(new FakeRepository([connection], [snapshot, alias], ProjectAiRoutingPolicy.Create(project))).BuildServiceProvider();
+
+        var result = await services.GetRequiredService<IModelRouter>().SelectAsync(new(project, null, AgentRole.Coder, "Implement a small C# change", RepositoryLanguages: ["C#"], ChangeType: "DomainModel"), default);
+
+        Assert.True(result.Succeeded, result.FailureMessage);
+        Assert.Equal("gpt-4.1", result.Selection!.ProviderModelId);
+        Assert.Contains("Genuinely tied", Assert.Single(result.EligibleAlternatives).RankedLowerReason);
+    }
+    [Fact]
+    public async Task Duplicate_provider_model_tie_uses_discovered_id_as_final_stability_key()
+    {
+        var project = Guid.NewGuid();
+        var connection = AiProviderConnection.Create(ProviderType.OpenAI, "OpenAI");
+        connection.Connected();
+        var first = DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-5-mini", "first", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 400_000, 128_000);
+        var second = DiscoveredModel.Create(connection.Id, ProviderType.OpenAI, "gpt-5-mini", "second", null, ModelLifecycleStatus.Stable, CapabilityMetadataSource.VersionedProviderMapping, "23", 400_000, 128_000);
+        var expected = new[] { first.Id, second.Id }.Min();
+        var services = new ServiceCollection().AddApplication().AddSingleton<IAiRoutingRepository>(new FakeRepository([connection], first.Id == expected ? [second, first] : [first, second], ProjectAiRoutingPolicy.Create(project))).BuildServiceProvider();
+
+        var result = await services.GetRequiredService<IModelRouter>().SelectAsync(new(project, null, AgentRole.Coder, "Implement a small C# change", RepositoryLanguages: ["C#"], ChangeType: "DomainModel"), default);
+
+        Assert.True(result.Succeeded, result.FailureMessage);
+        Assert.Equal(expected, result.Selection!.DiscoveredModelId);
+        Assert.Contains("discovered model ID", Assert.Single(result.EligibleAlternatives).RankedLowerReason);
+    }
+    [Fact]
+    public void Equal_aggregate_with_offset_meaningful_components_is_not_a_genuine_tie()
+    {
+        SelectedModel Model(params ScoreComponent[] parts) => new(null, Guid.NewGuid(), ProviderType.OpenAI, "model", ModelSelectionSource.AutomaticRouting, 100, "test", parts);
+        var rolePreferred = Model(new("Hard compatibility", 20, ""), new("Role fit", 30, ""), new("Preferred provider", 10, ""), new("Reviewer diversity", 0, ""));
+        var diversityPreferred = Model(new("Hard compatibility", 20, ""), new("Role fit", 30, ""), new("Preferred provider", 0, ""), new("Reviewer diversity", 10, ""));
+
+        Assert.False(DeterministicModelRouter.MeaningfullyTied(rolePreferred, diversityPreferred));
+        Assert.True(DeterministicModelRouter.CompareMeaningfulForOrdering(rolePreferred, diversityPreferred) < 0);
+        Assert.Equal("Preferred provider", DeterministicModelRouter.FirstDifferingMeaningfulComponent(rolePreferred, diversityPreferred));
     }
     [Fact]
     public async Task Excluded_rate_limited_model_routes_to_next_eligible_model()

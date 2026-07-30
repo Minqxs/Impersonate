@@ -5,6 +5,7 @@ namespace Impersonate.Application.Ai;
 
 internal sealed class DeterministicModelRouter(IAiRoutingRepository repository, ITaskProfiler profiler, IModelCapabilityCatalog catalog, IModelIdentityClassifier classifier) : IModelRouter
 {
+    private static readonly string[] MeaningfulComponentOrder = ["Hard compatibility", "Role fit", "Repository protocol", "Generation and specialization", "Task and stack fit", "Complexity and risk", "Policy", "Preferred provider", "Reviewer diversity", "Historical outcomes"];
     public async Task<ModelSelectionResult> SelectAsync(ModelSelectionRequest request, CancellationToken ct)
     {
         var profile = profiler.Profile(request);
@@ -12,12 +13,12 @@ internal sealed class DeterministicModelRouter(IAiRoutingRepository repository, 
         var connections = (await repository.GetConnectionsAsync(ct)).Where(x => x.Status == ProviderConnectionStatus.Connected).ToDictionary(x => x.Id);
         var allowed = JsonSerializer.Deserialize<ProviderType[]>(policy.AllowedProvidersJson) ?? [];
         var blocked = JsonSerializer.Deserialize<ProviderType[]>(policy.BlockedProvidersJson) ?? [];
-        var candidates = (await repository.GetModelsAsync(null, ct)).Where(x => x.IsAvailable && x.LifecycleStatus != ModelLifecycleStatus.Deprecated && connections.ContainsKey(x.ProviderConnectionId) && (policy.AllowPreviewModels || x.LifecycleStatus != ModelLifecycleStatus.Preview) && !(request.ExcludedModels?.Contains(x.Id) ?? false) && (allowed.Length == 0 || allowed.Contains(x.ProviderType)) && !blocked.Contains(x.ProviderType)).Select(x => (Model: x, Discovery: Parse(x.CapabilitiesJson), Catalog: catalog.Resolve(x.ProviderType, x.ProviderModelId))).Where(x => SupportsRequest(request.Role, profile, x.Discovery, x.Catalog, x.Model, request)).Select(x => Score(x.Model, x.Discovery, x.Catalog, profile, policy, request, classifier)).OrderByDescending(x => x.Score).ThenBy(x => x.ProviderType).ThenBy(x => x.ProviderModelId, StringComparer.Ordinal).ToList();
+        var candidates = (await repository.GetModelsAsync(null, ct)).Where(x => x.IsAvailable && x.LifecycleStatus != ModelLifecycleStatus.Deprecated && connections.ContainsKey(x.ProviderConnectionId) && (policy.AllowPreviewModels || x.LifecycleStatus != ModelLifecycleStatus.Preview) && !(request.ExcludedModels?.Contains(x.Id) ?? false) && (allowed.Length == 0 || allowed.Contains(x.ProviderType)) && !blocked.Contains(x.ProviderType)).Select(x => (Model: x, Discovery: Parse(x.CapabilitiesJson), Catalog: catalog.Resolve(x.ProviderType, x.ProviderModelId))).Where(x => SupportsRequest(request.Role, profile, x.Discovery, x.Catalog, x.Model, request)).Select(x => Score(x.Model, x.Discovery, x.Catalog, profile, policy, request, classifier)).OrderByDescending(x => x.Score).ThenBy(x => x, Comparer<SelectedModel>.Create(CompareMeaningfulForOrdering)).ThenBy(x => x.ProviderType).ThenBy(x => x.ProviderModelId, StringComparer.Ordinal).ThenBy(x => x.DiscoveredModelId).ToList();
         var overrideId = request.ManualModelOverrideId ?? policy.FixedModelOverrideId;
         if (candidates.Count == 0)
             return overrideId is not null ? new(false, profile, null, [], "invalid_override", "The selected model is unavailable or does not meet this role's requirements.") : new(false, profile, null, [], "no_eligible_model", connections.Count == 0 ? "No connected AI providers are available." : $"No discovered model satisfies the {request.Role} requirements and project policy.");
         var best = candidates[0];
-        var ranked = candidates.Skip(1).Select(x => x with { RankedLowerReason = $"Ranked {best.Score - x.Score} points lower than {best.ProviderModelId} under the same role profile and project policy." }).ToList();
+        var ranked = candidates.Skip(1).Select(x => x with { RankedLowerReason = MeaningfullyTied(best, x) ? $"Genuinely tied with {best.ProviderModelId} after every meaningful score component; provider, model ID, and discovered model ID supplied deterministic stability ordering." : best.Score == x.Score ? $"Equal aggregate score to {best.ProviderModelId}, but the {FirstDifferingMeaningfulComponent(best, x)} component determined the order." : $"Ranked {best.Score - x.Score} points lower than {best.ProviderModelId} under the same role profile and project policy." }).ToList();
         if (overrideId is not null)
         {
             var chosen = candidates.FirstOrDefault(x => x.DiscoveredModelId == overrideId);
@@ -70,40 +71,71 @@ internal sealed class DeterministicModelRouter(IAiRoutingRepository repository, 
         {
             new("Hard compatibility", 20, $"Meets the {profile.Role} capability floor {floor}/4.")
         };
+        var qualityMode = policy.CostPreference == RoutingPreference.Quality || policy.LatencyPreference == RoutingPreference.Quality;
+        var economyMode = policy.CostPreference == RoutingPreference.Economy;
         var role = profile.Role switch
         {
             AgentRole.Coder => metadata.CodingStrength,
             AgentRole.Reviewer => metadata.ReviewStrength,
             _ => metadata.PlanningStrength
         };
-        parts.Add(new("Role fit", role * 8, $"Catalogue v2 role-fit tier is {role}/4 for {profile.Role}."));
+        parts.Add(new("Role fit", role * 8, $"Catalogue v3 role-fit tier is {role}/4 for {profile.Role}."));
         parts.Add(new("Repository protocol", profile.RequiresTools ? metadata.RepositoryToolReliability * 4 : 0, $"Reviewed repository-protocol reliability is {metadata.RepositoryToolReliability}/4."));
+        var specialisationBonus = profile.Role == AgentRole.Coder && metadata.Specialisation.Equals("Coding", StringComparison.OrdinalIgnoreCase) ? qualityMode ? 12 : economyMode ? 0 : 1 : 0;
+        var generationAndSpecialisation = GenerationTier(metadata.Generation) * 2 + specialisationBonus;
+        parts.Add(new("Generation and specialization", generationAndSpecialisation, $"Reviewed generation '{metadata.Generation}' and specialization '{metadata.Specialisation}' were applied."));
         var taskFit = (profile.Languages ?? []).Count(x => metadata.LanguageAffinities.Contains(x)) * 4 + (profile.Frameworks ?? []).Count(x => metadata.FrameworkAffinities.Contains(x)) * 4;
         parts.Add(new("Task and stack fit", taskFit, taskFit > 0 ? "Catalogue affinities overlap the detected repository stack." : "No reviewed language/framework affinity bonus was applied."));
         parts.Add(new("Complexity and risk", metadata.ReasoningStrength * (profile.Complexity == TaskComplexity.High ? 4 : 2), $"Reasoning tier was weighted for {profile.Complexity} complexity and {profile.Risk} risk."));
-        var qualityMode = policy.CostPreference == RoutingPreference.Quality || policy.LatencyPreference == RoutingPreference.Quality;
-        var economyMode = policy.CostPreference == RoutingPreference.Economy;
-        parts.Add(new("Policy", qualityMode ? (role + metadata.ReasoningStrength + metadata.RepositoryToolReliability) * 5 : economyMode ? (5 - metadata.CostTier) * 12 : (role + metadata.ReasoningStrength) * 3 + (5 - metadata.CostTier) * 4, $"{(qualityMode ? "Quality" : economyMode ? "Economy" : "Balanced")} policy was applied only after the capability floor."));
+        parts.Add(new("Policy", qualityMode ? (role + metadata.ReasoningStrength + metadata.RepositoryToolReliability) * 5 : economyMode ? (5 - metadata.CostTier) * 12 : (role + metadata.ReasoningStrength) * 2 + (5 - metadata.CostTier) * 8, $"{(qualityMode ? "Quality" : economyMode ? "Economy" : "Balanced")} policy was applied only after the capability floor."));
         if (policy.PreferredProvider == model.ProviderType)
             parts.Add(new("Preferred provider", 10, "The model belongs to the project's preferred provider."));
         ScoreComponent? diversity = null;
-        if (profile.Role == AgentRole.Reviewer && policy.PreferReviewerDiversity && request.CoderModelId is not null)
+        if (profile.Role == AgentRole.Reviewer && policy.PreferReviewerDiversity)
         {
-            var coderFamily = request.CoderProvider is { } cp ? classifier.Classify(cp, request.FailureHistory?.LastOrDefault()?.Model ?? string.Empty).CanonicalModel : string.Empty;
             var current = classifier.Classify(model.ProviderType, model.ProviderModelId);
-            var different = request.CoderProvider != model.ProviderType || (!string.IsNullOrEmpty(coderFamily) && current.CanonicalModel != coderFamily);
-            diversity = new("Reviewer diversity", different ? policy.ReviewerDiversityWeight : 0, different ? "Reviewer has a materially different provider or canonical capability identity." : "Alias or dated snapshot identity is not meaningful Reviewer diversity.");
+            var coder = request.CoderIdentity;
+            var different = coder is not null && !coder.CanonicalFamily.Equals("unknown", StringComparison.OrdinalIgnoreCase) && !current.CanonicalFamily.Equals("unknown", StringComparison.OrdinalIgnoreCase) && !current.CanonicalFamily.Equals(coder.CanonicalFamily, StringComparison.OrdinalIgnoreCase);
+            diversity = new("Reviewer diversity", different ? policy.ReviewerDiversityWeight : 0, coder is null ? "Reviewer diversity is zero because the actual selected Coder identity is unavailable." : different ? $"Reviewer family {current.CanonicalFamily} is materially different from actual Coder family {coder.CanonicalFamily}." : "The Reviewer is the same canonical family as the actual Coder; aliases and dated snapshots receive no diversity.");
             parts.Add(diversity);
         }
 
         parts.Add(new("Historical outcomes", 0, "Historical performance was not used because insufficient samples exist (minimum 10)."));
         var total = parts.Sum(x => x.Score);
         var explanation = string.Join(" ", parts.Where(x => x.Score > 0).OrderByDescending(x => x.Score).Take(5).Select(x => x.Reason));
+        if (diversity is not null)
+            explanation += " " + diversity.Reason;
         if (request.FailureHistory?.LastOrDefault() is { } failure)
             explanation += $" Escalated after {failure.Model} failed with {failure.Code}.";
         var identity = classifier.Classify(model.ProviderType, model.ProviderModelId);
-        return new(model.ProviderConnectionId, model.Id, model.ProviderType, model.ProviderModelId, request.FailureHistory?.Count > 0 ? ModelSelectionSource.Escalation : ModelSelectionSource.AutomaticRouting, total, explanation, parts, metadata.MetadataVersion, null, identity.CanonicalModel, identity.Variant.ToString(), identity.Endpoint.ToString(), $"{profile.Role} {floor}/4", model.ContextWindowSize, model.MaximumOutputSize);
+        return new(model.ProviderConnectionId, model.Id, model.ProviderType, model.ProviderModelId, request.FailureHistory?.Count > 0 ? ModelSelectionSource.Escalation : ModelSelectionSource.AutomaticRouting, total, explanation, parts, metadata.MetadataVersion, null, identity.CanonicalFamily, identity.Variant.ToString(), identity.Endpoint.ToString(), $"{profile.Role} {floor}/4", model.ContextWindowSize, model.MaximumOutputSize, metadata.Generation, metadata.Specialisation);
     }
+
+    private static int GenerationTier(string generation)
+    {
+        if (generation.Equals("gpt-4.1", StringComparison.OrdinalIgnoreCase))
+            return 1;
+        if (generation.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = generation[5..].TrimStart('.');
+            return int.TryParse(suffix, out var minor) ? Math.Min(8, 2 + minor) : 2;
+        }
+        return generation is "o3" or "o4" ? 2 : 0;
+    }
+
+    private static int ComponentScore(SelectedModel model, string name) => model.ScoreBreakdown?.FirstOrDefault(x => x.Name == name)?.Score ?? 0;
+    internal static int CompareMeaningfulForOrdering(SelectedModel left, SelectedModel right)
+    {
+        foreach (var name in MeaningfulComponentOrder)
+        {
+            var comparison = ComponentScore(right, name).CompareTo(ComponentScore(left, name));
+            if (comparison != 0)
+                return comparison;
+        }
+        return 0;
+    }
+    internal static bool MeaningfullyTied(SelectedModel left, SelectedModel right) => left.Score == right.Score && MeaningfulComponentOrder.All(name => ComponentScore(left, name) == ComponentScore(right, name));
+    internal static string FirstDifferingMeaningfulComponent(SelectedModel left, SelectedModel right) => MeaningfulComponentOrder.First(name => ComponentScore(left, name) != ComponentScore(right, name));
 
     private static ModelCapability Parse(string json)
     {
