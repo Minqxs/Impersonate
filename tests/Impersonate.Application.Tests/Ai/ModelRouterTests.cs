@@ -38,6 +38,63 @@ public sealed class ModelRouterTests
         Assert.False(profile.SecuritySensitive);
         Assert.False(profile.ArchitectureSensitive);
     }
+    [Theory]
+    [InlineData("No new database column or migration is introduced.")]
+    [InlineData("Computed only; no database change and not persisted.")]
+    [InlineData("Expose a read-only projection without a migration.")]
+    [InlineData("Do not add a migration.")]
+    [InlineData("Must not create a database migration.")]
+    [InlineData("No migrations are introduced.")]
+    public void Negative_database_constraints_do_not_create_database_work(string constraint)
+    {
+        var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
+        var profile = profiler.Profile(new(Guid.NewGuid(), null, AgentRole.Coder, $"Add EmailDomain. {constraint}", TaskTitle: "Add read-only EmailDomain", AcceptanceCriteria: ["EmailDomain is derived from Email", constraint], ChangeType: "Extension", AffectedAreas: ["Domain"], RepositoryEvidence: ["src/Domain/User.cs"], ExpectedFileCount: 1));
+
+        Assert.NotEqual(EngineeringTaskType.DatabaseMigration, profile.TaskType);
+        Assert.False(profile.DatabaseInvolvement);
+        Assert.False(profile.ArchitectureSensitive);
+        Assert.Contains(profile.Reasons, x => x.StartsWith("Negative database constraints:", StringComparison.Ordinal));
+        Assert.Contains(profile.Reasons, x => x == "No independent positive database-change evidence was found.");
+    }
+    [Fact]
+    public void Independent_positive_database_evidence_is_not_suppressed_by_negative_scope()
+    {
+        var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
+        var profile = profiler.Profile(new(Guid.NewGuid(), null, AgentRole.Coder, "Add an EF mapping change. No migration is required.", ChangeType: "Extension", AffectedAreas: ["Infrastructure"], AcceptanceCriteria: ["EF mapping change persists the property"]));
+
+        Assert.Equal(EngineeringTaskType.DatabaseMigration, profile.TaskType);
+        Assert.True(profile.DatabaseInvolvement);
+        Assert.Contains(profile.Reasons, x => x.StartsWith("Positive database evidence:", StringComparison.Ordinal));
+        Assert.Contains(profile.Reasons, x => x.StartsWith("Negative database constraints:", StringComparison.Ordinal));
+    }
+    [Fact]
+    public void Test_acceptance_criterion_does_not_reclassify_domain_task_as_testing()
+    {
+        var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
+        var profile = profiler.Profile(new(Guid.NewGuid(), null, AgentRole.Coder, "Add a computed property", TaskTitle: "Add EmailDomain", AcceptanceCriteria: ["Focused tests pass"], ChangeType: "DomainModel", AffectedAreas: ["Domain"]));
+
+        Assert.Equal(EngineeringTaskType.DomainModel, profile.TaskType);
+    }
+    [Fact]
+    public void Explicit_child_task_negation_suppresses_lower_priority_feature_database_keywords()
+    {
+        var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
+        var profile = profiler.Profile(new(Guid.NewGuid(), null, AgentRole.Coder, "Computed only; no database change.", TaskTitle: "Add EmailDomain", FeatureRequest: "Add a persisted column and migration for another feature", ChangeType: "DomainModel", AffectedAreas: ["Domain"]));
+
+        Assert.Equal(EngineeringTaskType.DomainModel, profile.TaskType);
+        Assert.False(profile.DatabaseInvolvement);
+    }
+    [Theory]
+    [InlineData("Rapid", "Api")]
+    [InlineData("Latest", "Test")]
+    public void Structured_change_type_precedes_unrelated_heuristic_substrings(string affectedArea, string misleadingFragment)
+    {
+        Assert.Contains(misleadingFragment, affectedArea, StringComparison.OrdinalIgnoreCase);
+        var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
+        var profile = profiler.Profile(new(Guid.NewGuid(), null, AgentRole.Coder, "Change the domain model", ChangeType: "DomainModel", AffectedAreas: [affectedArea]));
+
+        Assert.Equal(EngineeringTaskType.DomainModel, profile.TaskType);
+    }
     [Fact]
     public async Task OpenAi_flagship_mini_and_nano_have_distinct_capability_scores()
     {
