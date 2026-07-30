@@ -104,10 +104,11 @@ internal class OpenAiProviderAdapter(HttpClient http, IOptions<ExecutionOptions>
         var safeCode = failed ? "provider_response_failed" : status == "incomplete" ? "provider_output_truncated" : refused ? "provider_refused" : calls.Count == 0 ? "provider_missing_tool_call" : null;
         var usage = root.TryGetProperty("usage", out var usageValue) ? usageValue : default;
         int? reasoning = usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty("output_tokens_details", out var outputDetails) && outputDetails.TryGetProperty("reasoning_tokens", out var reasoningTokens) && reasoningTokens.TryGetInt32(out var parsedReasoning) ? parsedReasoning : null;
+        long? HeaderNumber(string name) => response.Headers.TryGetValues(name, out var values) && long.TryParse(values.FirstOrDefault(), out var value) ? value : null;
         return new(new(id), calls, id,
             usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty("input_tokens", out var input) ? input.GetInt32() : null,
             usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty("output_tokens", out var tokens) ? tokens.GetInt32() : null,
-            status, incomplete, itemTypes.Distinct().Take(20).ToList(), reasoning, safeCode);
+            status, incomplete, itemTypes.Distinct().Take(20).ToList(), reasoning, safeCode, ProviderRemainingTokens: HeaderNumber("x-ratelimit-remaining-tokens"), ProviderTokenLimit: HeaderNumber("x-ratelimit-limit-tokens"));
     }
     protected override HttpRequestMessage CompletionRequest(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q)
     {

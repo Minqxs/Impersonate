@@ -104,6 +104,11 @@ internal abstract class ProviderAdapterBase(HttpClient http, IOptions<ExecutionO
                 waited += (long)delay.TotalMilliseconds;
                 retries++;
             }
+            catch (ProviderRequestException ex) when (ex.Code == "provider_rate_limited")
+            {
+                var capacity = ex.Capacity is null ? null : ex.Capacity with { CumulativeWaitMilliseconds = waited };
+                throw new ProviderRequestException(ex.Code, ex.Message, ex.StatusCode, ex.IsTransient, capacity);
+            }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
             {
                 throw new ProviderRequestException("provider_invalid_response", "The provider returned an invalid completion response.", HttpStatusCode.OK, false);

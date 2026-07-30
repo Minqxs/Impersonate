@@ -70,6 +70,11 @@ public sealed class ExecutionInvocation
     {
         get; private set;
     }
+    public int MaximumRequestedOutputReservation { get; private set; }
+    public string OutputReservationReasonsJson { get; private set; } = "[]";
+    public long ProviderCapacityWaitMilliseconds { get; private set; }
+    public bool ProviderResetUsed { get; private set; }
+    public string? LastRateLimitScope { get; private set; }
     public int ProviderRoundTripCount
     {
         get; private set;
@@ -132,7 +137,7 @@ public sealed class ExecutionInvocation
         get; private set;
     }
 
-    public static ExecutionInvocation Record(Guid taskAttemptId, int sequence, string role, string provider, string model, Guid? selectionDecisionId, string promptVersion, string? requestId, int? input, int? output, string? responseType, int toolSteps, int reads, int searches, int patches, int fallbackSequence, bool succeeded, string? failureCode, string? failureReason, DateTimeOffset startedAt, DateTimeOffset completedAt, int providerRounds = 0, int readOnlyRounds = 0, int maximumSingleRequestInput = 0, string? providerStatus = null, string? incompleteReason = null, int repairs = 0, int corrections = 0, int paidRequests = 0, string phase = "Discovery", string? prohibitedTool = null, int patchAttempts = 0, int failedPatches = 0, string? lastPatchFailureCode = null) => new()
+    public static ExecutionInvocation Record(Guid taskAttemptId, int sequence, string role, string provider, string model, Guid? selectionDecisionId, string promptVersion, string? requestId, int? input, int? output, string? responseType, int toolSteps, int reads, int searches, int patches, int fallbackSequence, bool succeeded, string? failureCode, string? failureReason, DateTimeOffset startedAt, DateTimeOffset completedAt, int providerRounds = 0, int readOnlyRounds = 0, int maximumSingleRequestInput = 0, string? providerStatus = null, string? incompleteReason = null, int repairs = 0, int corrections = 0, int paidRequests = 0, string phase = "Discovery", string? prohibitedTool = null, int patchAttempts = 0, int failedPatches = 0, string? lastPatchFailureCode = null, int maximumRequestedOutputReservation = 0, string outputReservationReasonsJson = "[]", long providerCapacityWaitMilliseconds = 0, bool providerResetUsed = false, string? lastRateLimitScope = null) => new()
     {
         Id = Guid.NewGuid(),
         TaskAttemptId = taskAttemptId,
@@ -153,6 +158,11 @@ public sealed class ExecutionInvocation
         PatchAttemptCount = patchAttempts,
         FailedPatchCount = failedPatches,
         LastPatchFailureCode = lastPatchFailureCode,
+        MaximumRequestedOutputReservation = maximumRequestedOutputReservation,
+        OutputReservationReasonsJson = outputReservationReasonsJson,
+        ProviderCapacityWaitMilliseconds = providerCapacityWaitMilliseconds,
+        ProviderResetUsed = providerResetUsed,
+        LastRateLimitScope = lastRateLimitScope,
         ProviderRoundTripCount = providerRounds,
         ConsecutiveReadOnlyRounds = readOnlyRounds,
         MaximumSingleRequestInput = maximumSingleRequestInput,
