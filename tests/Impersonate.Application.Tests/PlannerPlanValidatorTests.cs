@@ -108,12 +108,15 @@ public sealed class PlannerPlanValidatorTests
         var allowed = new HashSet<string> { "src/customer/CustomerService.cs" };
         var plan = new PlannerPlan("Summary", true, [], [new(1, "Customer", "Implement customer behavior", ["Done"], RepositoryEvidence: ["invented.cs"])], null, null);
         var correction = PlannerEvidenceSanitizer.BuildCorrection(PlannerEvidenceSanitizer.Sanitize(plan, allowed).UnsupportedEvidence, plan, allowed);
-        var repository = new PlanningRepositoryContext(["src/customer/CustomerService.cs"], [new("src/customer/CustomerService.cs", "class CustomerService {}", false)], [], [], [], [], [], "Snapshot", "artifact", allowed);
+        var repository = new PlanningRepositoryContext(["src/customer/CustomerService.cs", "tests/Customer.Tests/Customer.Tests.csproj", "Project.sln"], [new("src/customer/CustomerService.cs", "class CustomerService {}", false)], [], [], [], ["tests/Customer.Tests"], [], "Snapshot", "artifact", allowed, ["Project.sln"], [new("tests/Customer.Tests/Customer.Tests.csproj", ["../../src/Customer.csproj"], ["Microsoft.NET.Test.Sdk"], true, true, false)], "TestProjectOutsideRelevantExcerpts");
         var payload = PlannerRequestPayload.Build(new(Guid.NewGuid(), "Project", null, "https://github.com/example/repo.git", "main", "Create customer management feature", 12, "planner-v2", correction, RepositoryContext: repository));
         using var json = System.Text.Json.JsonDocument.Parse(payload);
         var root = json.RootElement;
         Assert.Equal("src/customer/CustomerService.cs", root.GetProperty("allowedRepositoryEvidencePaths")[0].GetString());
         Assert.Equal("class CustomerService {}", root.GetProperty("repositoryContext").GetProperty("relevantFiles")[0].GetProperty("content").GetString());
+        Assert.Equal("Project.sln", root.GetProperty("repositoryContext").GetProperty("solutionPaths")[0].GetString());
+        Assert.Equal("TestProjectOutsideRelevantExcerpts", root.GetProperty("repositoryContext").GetProperty("testProjectEvidence").GetString());
+        Assert.False(root.GetProperty("repositoryContext").GetProperty("projects")[0].GetProperty("includedInRelevantExcerpts").GetBoolean());
         Assert.Equal("Summary", root.GetProperty("correctionContext").GetProperty("previousPlan").GetProperty("summary").GetString());
     }
     [Fact]
