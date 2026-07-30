@@ -67,6 +67,8 @@ Provider connections, discovery, and deterministic Planner routing were pulled f
 
 ### 6. Git and GitHub MCP delivery
 
+**Foundation in progress.** Per-task delivery state, handoff contracts, dependency eligibility, persistence, and read projections are introduced first. Target Git and GitHub operations remain deferred.
+
 - feature branch
 - one approved commit per task
 - push
@@ -74,6 +76,15 @@ Provider connections, discovery, and deterministic Planner routing were pulled f
 - skipped-task reporting
 - draft PR
 - core assignment demonstration
+
+Focused PR sequence:
+
+1. delivery domain and handoff contract;
+2. target Git branch/worktree, patch, validation and single commit;
+3. push and remote branch recovery;
+4. GitHub MCP pull-request creation;
+5. merge reconciliation and dependency unlocking;
+6. full Milestone 6 acceptance.
 
 Tag target:
 
@@ -172,4 +183,4 @@ Incremental task patch baselines are Milestone 5 execution hardening. Shared rep
 
 ## Historical execution optimisation
 
-Reliable autonomous execution comes before token optimisation. A later evidence-driven milestone may optimise context, prompts, and spend using successful run history: task type, repository area, useful evidence files, tool sequence, prompt version, model outcome, patch result, Reviewer decision, revisions, and token consumption. It may evaluate context compaction, prompt minimisation, repository knowledge reuse, and spend policy only after reliable completion data exists. Model fine-tuning is not planned until a training-data and evaluation strategy exists. Milestone 6 has not started.
+Reliable autonomous execution comes before token optimisation. A later evidence-driven milestone may optimise context, prompts, and spend using successful run history: task type, repository area, useful evidence files, tool sequence, prompt version, model outcome, patch result, Reviewer decision, revisions, and token consumption. It may evaluate context compaction, prompt minimisation, repository knowledge reuse, and spend policy only after reliable completion data exists. Model fine-tuning is not planned until a training-data and evaluation strategy exists. Milestone 6 foundation is in progress; external delivery remains deferred.

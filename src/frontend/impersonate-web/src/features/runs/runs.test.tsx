@@ -44,7 +44,8 @@ describe('planner completion UI', () => {
     const delivered = { ...run, status: 'ReadyForDelivery', loop: { ...run.loop, currentStage: 'Committing' }, tasks: [], planningAttempts: [] };
     vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/timeline') ? response([]) : response(delivered));
     renderDetail();
-    expect(await screen.findByText(/Git commit and pull-request delivery will be introduced in Milestone 6/)).toBeInTheDocument();
+    expect(await screen.findByText(/Delivery foundation ready/)).toBeInTheDocument();
+    expect(screen.getByText(/Target branch creation, commits, pushes, and pull-request creation remain unavailable/)).toBeInTheDocument();
     expect(screen.queryByText(/code was committed/i)).not.toBeInTheDocument();
   });
 

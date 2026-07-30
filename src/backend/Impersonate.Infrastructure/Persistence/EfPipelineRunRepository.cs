@@ -6,7 +6,7 @@ namespace Impersonate.Infrastructure.Persistence;
 internal sealed class EfPipelineRunRepository(ImpersonateDbContext db) : IPipelineRunRepository
 {
     public Task AddAsync(PipelineRun run, CancellationToken ct) => db.PipelineRuns.AddAsync(run, ct).AsTask();
-    public Task<PipelineRun?> GetAsync(Guid projectId, Guid runId, CancellationToken ct) => db.PipelineRuns.AsSplitQuery().Include(x => x.LoopRun).Include(x => x.Tasks).ThenInclude(x => x.Attempts).Include(x => x.Tasks).ThenInclude(x => x.ReviewDecisions).Include(x => x.Events).SingleOrDefaultAsync(x => x.ProjectId == projectId && x.Id == runId, ct);
+    public Task<PipelineRun?> GetAsync(Guid projectId, Guid runId, CancellationToken ct) => db.PipelineRuns.AsSplitQuery().Include(x => x.LoopRun).Include(x => x.Tasks).ThenInclude(x => x.Attempts).Include(x => x.Tasks).ThenInclude(x => x.ReviewDecisions).Include(x => x.Deliveries).Include(x => x.Events).SingleOrDefaultAsync(x => x.ProjectId == projectId && x.Id == runId, ct);
     public async Task<PipelineRun?> ClaimNextExecutionAsync(Guid claimId, string workerId, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
@@ -28,7 +28,7 @@ internal sealed class EfPipelineRunRepository(ImpersonateDbContext db) : IPipeli
     public async Task<IReadOnlyList<PlanningAttempt>> GetPlanningAttemptsAsync(Guid runId, CancellationToken ct) => await db.PlanningAttempts.AsNoTracking().Where(x => x.PipelineRunId == runId).OrderBy(x => x.AttemptNumber).ToListAsync(ct);
     public async Task<IReadOnlyList<PipelineRun>> ListAsync(Guid projectId, PipelineRunStatus? status, DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct)
     {
-        var q = db.PipelineRuns.AsNoTracking().AsSplitQuery().Include(x => x.LoopRun).Include(x => x.Tasks).ThenInclude(x => x.Attempts).Include(x => x.Tasks).ThenInclude(x => x.ReviewDecisions).Where(x => x.ProjectId == projectId);
+        var q = db.PipelineRuns.AsNoTracking().AsSplitQuery().Include(x => x.LoopRun).Include(x => x.Tasks).ThenInclude(x => x.Attempts).Include(x => x.Tasks).ThenInclude(x => x.ReviewDecisions).Include(x => x.Deliveries).Where(x => x.ProjectId == projectId);
         if (status is not null)
             q = q.Where(x => x.Status == status);
         if (from is not null)
@@ -42,6 +42,7 @@ internal sealed class EfPipelineRunRepository(ImpersonateDbContext db) : IPipeli
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var taskIds = db.Set<PlannedTask>().Where(x => x.PipelineRunId == runId).Select(x => x.Id);
         var attemptIds = db.TaskAttempts.Where(x => taskIds.Contains(x.PlannedTaskId)).Select(x => x.Id);
+        await db.TaskDeliveries.Where(x => x.ProjectId == projectId && x.PipelineRunId == runId).ExecuteDeleteAsync(ct);
         await db.ExecutionInvocations.Where(x => attemptIds.Contains(x.TaskAttemptId)).ExecuteDeleteAsync(ct);
         await db.ModelSelectionDecisions.Where(x => x.ProjectId == projectId && (x.PipelineRunId == runId || x.PlannedTaskId != null && taskIds.Contains(x.PlannedTaskId.Value))).ExecuteDeleteAsync(ct);
         await db.ReviewDecisions.Where(x => taskIds.Contains(x.PlannedTaskId)).ExecuteDeleteAsync(ct);

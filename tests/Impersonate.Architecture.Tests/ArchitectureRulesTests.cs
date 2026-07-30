@@ -147,6 +147,11 @@ public sealed class ArchitectureRulesTests
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Ai.DataProtectionCredentialStore"));
         AssertAssignable<Application.Pipelines.IPipelineRunRepository>(
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Persistence.EfPipelineRunRepository"));
+        AssertAssignable<Application.Delivery.ITaskDeliveryRepository>(
+            RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Persistence.EfTaskDeliveryRepository"));
+        Assert.DoesNotContain(infrastructureAssembly.GetTypes(), type =>
+            typeof(Application.Delivery.ITargetRepositoryDeliveryService).IsAssignableFrom(type)
+            || typeof(Application.Delivery.IPullRequestGateway).IsAssignableFrom(type));
     }
 
     private static void AssertReferences(Assembly assembly, IReadOnlyCollection<string> forbidden)
