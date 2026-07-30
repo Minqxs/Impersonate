@@ -1,0 +1,3 @@
+import { Alert, Button, Stack, Typography } from '@mui/material';
+import { Link, useParams } from 'react-router-dom';
+export function ProjectQualityPage() { const { projectId }=useParams(); return <Stack spacing={2}><Typography variant="h4">Code Quality</Typography><Alert severity="info"><strong>Not configured.</strong> Optional, read-only SonarQube project analytics are deliberately deferred to Quick Win B.</Alert><Typography color="text.secondary">No quality gate is applied to planning, task execution, review, or delivery.</Typography><Button component={Link} to={`/projects/${projectId}/settings`} sx={{alignSelf:'flex-start'}}>Project settings</Button></Stack>; }

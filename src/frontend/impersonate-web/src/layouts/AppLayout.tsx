@@ -22,19 +22,19 @@ export function AppLayout() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary' }}>
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar>
-          <Typography variant="h6" component="h1" sx={{ flexGrow: 1, fontWeight: 700 }}>
+        <Toolbar sx={{ gap: 1, minWidth: 0 }}>
+          <Typography variant="h6" component="h1" sx={{ flexGrow: 1, fontWeight: 700, display: { xs: 'none', sm: 'block' } }}>
             Impersonate
           </Typography>
           <ProjectSelector />
-          <Box sx={{ width: 12 }} />
-          <StatusIndicator />
+          <Box sx={{ display: { xs: 'none', sm: 'block' } }}><StatusIndicator /></Box>
         </Toolbar>
       </AppBar>
 
       <Drawer
         variant="permanent"
         sx={{
+          display: { xs: 'none', md: 'block' },
           width: drawerWidth,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
@@ -70,9 +70,9 @@ export function AppLayout() {
         </Box>
       </Drawer>
 
-      <Box component="main" sx={{ ml: `${drawerWidth}px`, minHeight: '100vh' }}>
+      <Box component="main" sx={{ ml: { xs: 0, md: `${drawerWidth}px` }, minWidth: 0, minHeight: '100vh' }}>
         <Toolbar />
-        <Box className="mx-auto max-w-6xl p-6 md:p-10">
+        <Box className="mx-auto max-w-6xl p-4 sm:p-6 md:p-10" sx={{ minWidth: 0 }}>
           <Outlet />
         </Box>
       </Box>

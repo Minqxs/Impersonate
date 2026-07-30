@@ -1,0 +1,5 @@
+import { Card, CardContent, Typography } from '@mui/material';
+import type { ReactNode } from 'react';
+export function MetricCard({ label, value, detail, action }: { label: string; value: string | number; detail?: string; action?: ReactNode }) {
+  return <Card variant="outlined" sx={{ minWidth: 0, height: '100%' }}><CardContent sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', boxSizing: 'border-box' }}><Typography variant="overline" color="text.secondary">{label}</Typography><Typography component="p" fontWeight={700} sx={{ fontSize: 'clamp(1.35rem, 2.2vw, 2rem)', lineHeight: 1.15, overflowWrap: 'anywhere' }}>{value}</Typography>{detail && <Typography variant="body2" color="text.secondary" title={detail} sx={{ mt: .5, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden', overflowWrap: 'anywhere' }}>{detail}</Typography>}{action && <Typography component="div" sx={{ mt: 'auto', pt: 1 }}>{action}</Typography>}</CardContent></Card>;
+}
