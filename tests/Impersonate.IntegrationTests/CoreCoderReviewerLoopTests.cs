@@ -96,6 +96,7 @@ public sealed class CoreCoderReviewerLoopTests
     private static IReadOnlyList<string> CoderResponses() => [
         "{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"read\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"User.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null}",
         "{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"patch\",\"tool\":\"apply_patch\",\"arguments\":{\"path\":null,\"query\":null,\"patch\":\"patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null}",
+        "{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"validate\",\"tool\":\"run_command\",\"arguments\":{\"path\":null,\"query\":null,\"patch\":null,\"executable\":\"dotnet\",\"arguments\":[\"test\"],\"workingDirectory\":\".\",\"timeoutSeconds\":120}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null}",
         "{\"type\":\"complete\",\"calls\":null,\"summary\":\"implemented\",\"validationNotes\":[],\"knownLimitations\":[]}"
     ];
 
@@ -106,6 +107,37 @@ public sealed class CoreCoderReviewerLoopTests
         {
             Requests.Add(request);
             return Task.FromResult(new LanguageModelResponse(responses[index++], $"request-{index}", 10, 5));
+        }
+        public async Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext connection, RoutedModel model, AgentTurnRequest request, CancellationToken cancellationToken)
+        {
+            var response = await CompleteAsync(connection, model, new(request.Model, request.SystemInstructions, request.InitialInput ?? "continuation", "{}", request.MaximumOutputTokens), cancellationToken);
+            using var document = JsonDocument.Parse(response.Content);
+            var root = document.RootElement;
+            var type = root.GetProperty("type").GetString();
+            var calls = new List<AgentToolCall>();
+            if (type == "tool_calls")
+                foreach (var call in root.GetProperty("calls").EnumerateArray())
+                {
+                    var tool = call.GetProperty("tool").GetString()!;
+                    var source = call.GetProperty("arguments");
+                    var args = tool switch
+                    {
+                        "read_file" => JsonSerializer.Serialize(new { path = source.GetProperty("path").GetString() }),
+                        "apply_patch" => JsonSerializer.Serialize(new { patch = source.GetProperty("patch").GetString() }),
+                        "get_diff" => "{}",
+                        "run_command" => JsonSerializer.Serialize(new { executable = source.GetProperty("executable").GetString(), arguments = source.GetProperty("arguments").EnumerateArray().Select(x => x.GetString()).ToArray(), workingDirectory = source.GetProperty("workingDirectory").GetString(), timeoutSeconds = source.GetProperty("timeoutSeconds").GetInt32() }),
+                        _ => "{}"
+                    };
+                    calls.Add(new(call.GetProperty("id").GetString()! + "-" + index, tool, args));
+                }
+            else
+                calls.Add(new("terminal-" + index, "complete_task", JsonSerializer.Serialize(new
+                {
+                    summary = root.GetProperty("summary").GetString(),
+                    validationNotes = Array.Empty<string>(),
+                    knownLimitations = Array.Empty<string>()
+                })));
+            return new(new(response.ProviderRequestId!), calls, response.ProviderRequestId, response.InputTokenCount, response.OutputTokenCount, "completed");
         }
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();

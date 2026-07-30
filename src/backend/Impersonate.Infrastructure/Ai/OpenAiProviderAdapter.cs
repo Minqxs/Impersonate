@@ -29,6 +29,86 @@ internal class OpenAiProviderAdapter(HttpClient http, IOptions<ExecutionOptions>
         return new ProviderModel(id, id, null, lifecycle, capabilities, IsReviewed(id) ? CapabilityMetadataSource.VersionedProviderMapping : CapabilityMetadataSource.ConservativeDefault, null, null);
     }).ToList();
     private static bool IsLanguage(string id) => id.StartsWith("gpt", StringComparison.OrdinalIgnoreCase) || id.StartsWith("o", StringComparison.OrdinalIgnoreCase);
+
+    public override Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct)
+    {
+        if (!UsesResponses(m.ProviderModelId))
+            throw new ProviderRequestException("coder_native_tools_unsupported", "The selected OpenAI model is not configured for native Responses API tools.", HttpStatusCode.BadRequest, false);
+        return SendWithRetryAsync(c, m, () => AgentTurnRequestMessage(c, m, q), ParseAgentTurnAsync, (result, attempts, retries, waited, scope, reset) => result with
+        {
+            SameModelRequestAttemptCount = attempts,
+            RateLimitRetryCount = retries,
+            CumulativeRateLimitWaitMilliseconds = waited,
+            LastRateLimitScope = scope,
+            ProviderResetUsed = reset
+        }, ct);
+    }
+
+    private static HttpRequestMessage AgentTurnRequestMessage(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q)
+    {
+        var request = Bearer(HttpMethod.Post, "v1/responses", c.Credential.ApiKey);
+        var body = new Dictionary<string, object?>
+        {
+            ["model"] = m.ProviderModelId,
+            ["instructions"] = q.SystemInstructions,
+            ["input"] = q.Conversation is null
+                ? q.InitialInput
+                : q.ToolResults.Select(x => new { type = "function_call_output", call_id = x.CallId, output = x.Output }).ToArray(),
+            ["tools"] = q.Tools.Select(x => new { type = "function", name = x.Name, description = x.Description, parameters = x.Parameters, strict = x.Strict }).ToArray(),
+            ["tool_choice"] = "required",
+            ["parallel_tool_calls"] = false,
+            ["max_output_tokens"] = q.MaximumOutputTokens
+        };
+        if (q.Conversation is not null)
+            body["previous_response_id"] = q.Conversation.OpaqueId;
+        if (!string.IsNullOrWhiteSpace(q.ReasoningEffort))
+            body["reasoning"] = new
+            {
+                effort = q.ReasoningEffort
+            };
+        if (!string.IsNullOrWhiteSpace(q.TextVerbosity))
+            body["text"] = new
+            {
+                verbosity = q.TextVerbosity
+            };
+        request.Content = JsonContent.Create(body);
+        return request;
+    }
+
+    private static async Task<AgentTurnResponse> ParseAgentTurnAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        var root = document.RootElement;
+        var id = root.GetProperty("id").GetString();
+        if (string.IsNullOrWhiteSpace(id))
+            throw new JsonException("Responses API response ID is required.");
+        var calls = new List<AgentToolCall>();
+        var itemTypes = new List<string>();
+        var refused = false;
+        if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in output.EnumerateArray())
+            {
+                var type = item.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(type))
+                    itemTypes.Add(type!);
+                if (type == "function_call")
+                    calls.Add(new(item.GetProperty("call_id").GetString() ?? throw new JsonException("Function call ID is required."), item.GetProperty("name").GetString() ?? throw new JsonException("Function name is required."), item.GetProperty("arguments").GetString() ?? "{}"));
+                if (type == "message" && item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+                    refused |= content.EnumerateArray().Any(x => x.TryGetProperty("type", out var partType) && partType.GetString() == "refusal");
+            }
+        }
+        var status = root.TryGetProperty("status", out var statusValue) ? statusValue.GetString() : null;
+        var incomplete = root.TryGetProperty("incomplete_details", out var details) && details.ValueKind == JsonValueKind.Object && details.TryGetProperty("reason", out var reason) ? reason.GetString() : null;
+        var failed = status == "failed" || root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object;
+        var safeCode = failed ? "provider_response_failed" : status == "incomplete" ? "provider_output_truncated" : refused ? "provider_refused" : calls.Count == 0 ? "provider_missing_tool_call" : null;
+        var usage = root.TryGetProperty("usage", out var usageValue) ? usageValue : default;
+        int? reasoning = usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty("output_tokens_details", out var outputDetails) && outputDetails.TryGetProperty("reasoning_tokens", out var reasoningTokens) && reasoningTokens.TryGetInt32(out var parsedReasoning) ? parsedReasoning : null;
+        return new(new(id), calls, id,
+            usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty("input_tokens", out var input) ? input.GetInt32() : null,
+            usage.ValueKind == JsonValueKind.Object && usage.TryGetProperty("output_tokens", out var tokens) ? tokens.GetInt32() : null,
+            status, incomplete, itemTypes.Distinct().Take(20).ToList(), reasoning, safeCode);
+    }
     protected override HttpRequestMessage CompletionRequest(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q)
     {
         var responses = ProviderType == ProviderType.OpenAI && UsesResponses(m.ProviderModelId);
@@ -132,7 +212,7 @@ internal class OpenAiProviderAdapter(HttpClient http, IOptions<ExecutionOptions>
     }
 
     private static bool IsReviewed(string id) => System.Text.RegularExpressions.Regex.IsMatch(id, @"^(gpt-(4\.1|5(?:\.\d+)?)(-(mini|nano|pro|codex))?)(-\d{4}-\d{2}-\d{2})?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) || System.Text.RegularExpressions.Regex.IsMatch(id, @"^o[34]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-    private static bool UsesResponses(string id) => id.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase) || id.StartsWith("o3", StringComparison.OrdinalIgnoreCase) || id.StartsWith("o4", StringComparison.OrdinalIgnoreCase);
+    private static bool UsesResponses(string id) => id.StartsWith("gpt-4.1", StringComparison.OrdinalIgnoreCase) || id.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase) || id.StartsWith("o3", StringComparison.OrdinalIgnoreCase) || id.StartsWith("o4", StringComparison.OrdinalIgnoreCase);
     private static bool SupportsJsonMode(string id) => id.StartsWith("gpt-4o", StringComparison.OrdinalIgnoreCase) || id.StartsWith("gpt-4.1", StringComparison.OrdinalIgnoreCase) || id.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase) || id.StartsWith("o", StringComparison.OrdinalIgnoreCase);
     protected override LanguageModelResponse ParseCompletion(JsonElement root, HttpResponseMessage response)
     {

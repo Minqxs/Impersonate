@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using Impersonate.Application.Ai;
 using Impersonate.Application.Execution;
@@ -9,10 +8,6 @@ namespace Impersonate.Infrastructure.Agents.Execution;
 
 internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProviderCredentialStore credentials, IRepositoryTools tools, IOptions<ExecutionOptions> options) : ICoderAgent
 {
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
     public async Task<CoderResult> ExecuteAsync(CoderContext context, CancellationToken ct)
     {
         if (context.Model.ConnectionId is not { } connectionId)
@@ -26,33 +21,9 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
         var evidence = await PreloadEvidence(context.Workspace, context.RepositoryEvidence ?? [], ct);
         if (!evidence.Succeeded)
             return Failure(evidence.FailureCode!, evidence.FailureMessage!);
-        var prompt = Load("coder-v1");
-        var phase = "Discovery";
-        var transcript = new List<object>();
-        var toolCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var totalInput = 0;
-        var totalOutput = 0;
-        var toolSteps = 0;
-        var providerRounds = 0;
-        var paidRequests = 0;
-        var consecutiveReadOnlyRounds = 0;
-        var noProgressCorrections = 0;
-        var repairs = 0;
-        var maximumSingleRequestInput = 0;
-        var prematureCompletions = 0;
-        var successfulReads = evidence.Excerpts.Count;
-        var successfulSearches = 0;
-        var patchAttempts = 0;
-        var successfulPatches = 0;
-        var failedPatches = 0;
-        string? lastPatchFailureCode = null;
-        var repositoryInspected = successfulReads > 0;
-        var currentDiffExists = false;
-        string? requestId = null;
-        string? responseType = null;
-        string? providerStatus = null;
-        string? incompleteReason = null;
-        var task = new
+
+        var definitions = NativeTools();
+        var initialInput = JsonSerializer.Serialize(new
         {
             context.FeatureRequest,
             task = new
@@ -67,82 +38,53 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
             context.ReviewerFeedback,
             context.EarlierApprovedSummaries,
             context.PriorProtocolSummary,
-            tools = new[]
-            {
-                "list_files",
-                "read_file",
-                "search_text",
-                "apply_patch",
-                "get_diff",
-                "run_command"
-            },
-            protocol = new
-            {
-                completionRequirements = new
-                {
-                    repositoryInspected = true,
-                    successfulPatchCount = "at least 1",
-                    currentDiffExists = true
-                },
-                toolCalls = new
-                {
-                    type = "tool_calls",
-                    calls = new[]
-                    {
-                        new
-                        {
-                            id = "call-1",
-                            tool = "read_file",
-                            arguments = new
-                            {
-                                path = "README.md",
-                                query = (string? )null,
-                                patch = (string? )null,
-                                executable = (string? )null,
-                                arguments = (string[]? )null,
-                                workingDirectory = (string? )null,
-                                timeoutSeconds = (int? )null
-                            }
-                        }
-                    },
-                    summary = (string?)null,
-                    validationNotes = (string[]?)null,
-                    knownLimitations = (string[]?)null
-                },
-                complete = new
-                {
-                    type = "complete",
-                    calls = (object?)null,
-                    summary = "Implemented the task.",
-                    validationNotes = Array.Empty<string>(),
-                    knownLimitations = Array.Empty<string>()
-                }
-            }
-        };
-        transcript.Add(new
-        {
-            role = "user",
-            content = JsonSerializer.Serialize(task)
+            instruction = "Use repository functions to inspect, implement, validate, then call complete_task. Call report_blocker only for a precise safe blocker."
         });
-        while (toolSteps < options.Value.MaximumCoderToolExecutions && providerRounds < options.Value.MaximumCoderProviderRounds)
+        var contextWindow = context.Model.ContextWindowSize ?? options.Value.DefaultModelContextWindowTokens;
+        var maximumOutput = Math.Min(Math.Max(1, contextWindow / 2), Math.Max(1, context.Model.MaximumOutputSize ?? options.Value.DefaultCoderMaximumOutputTokens));
+        if (EstimateTokens(initialInput) >= Math.Max(1, contextWindow - maximumOutput))
+            return Failure("provider_context_limit_exceeded", "The Coder request cannot fit the selected model's advertised context window.");
+        AgentConversationReference? conversation = null;
+        IReadOnlyList<AgentToolResult> pendingResults = [];
+        var completedCalls = new Dictionary<string, AgentToolResult>(StringComparer.Ordinal);
+        var toolCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var toolSteps = 0;
+        var rounds = 0;
+        var paidRequests = 0;
+        var totalInput = 0;
+        var totalOutput = 0;
+        var successfulReads = evidence.Excerpts.Count;
+        var successfulSearches = 0;
+        var patchAttempts = 0;
+        var successfulPatches = 0;
+        var successfulValidations = 0;
+        var failedPatches = 0;
+        var repositoryInspected = successfulReads > 0;
+        var currentDiffExists = false;
+        var prematureCompletions = 0;
+        string? lastPatchFailureCode = null;
+        string? requestId = null;
+        string? providerStatus = null;
+        string? incompleteReason = null;
+        var phase = "Discovery";
+
+        while (toolSteps < options.Value.MaximumCoderToolExecutions && rounds < options.Value.MaximumCoderProviderRounds)
         {
-            ct.ThrowIfCancellationRequested();
-            var contextWindow = context.Model.ContextWindowSize ?? options.Value.DefaultModelContextWindowTokens;
-            var maximumOutput = Math.Min(Math.Max(1, contextWindow / 2), Math.Max(1, context.Model.MaximumOutputSize ?? options.Value.DefaultCoderMaximumOutputTokens));
-            var availableInputTokens = Math.Max(1, contextWindow - maximumOutput);
-            var input = SerializeTranscript(transcript, availableInputTokens);
-            if (input is null)
-                return Failure("provider_context_limit_exceeded", "The complete Coder transcript cannot fit the selected model's advertised context window.", toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, 0, paidRequests, phase);
-            var estimatedInput = EstimateTokens(input);
-            maximumSingleRequestInput = Math.Max(maximumSingleRequestInput, estimatedInput);
-            LanguageModelResponse response;
+            AgentTurnResponse turn;
             try
             {
-                response = await adapter.CompleteAsync(new(connectionId, context.Model.ProviderType, credential.Credential!), new(context.Model.DiscoveredModelId, context.Model.ProviderModelId), new(context.Model.ProviderModelId, prompt, input, StructuredOutputSchema, maximumOutput, Reasoning(context), "low"), ct);
+                turn = await adapter.CompleteAgentTurnAsync(
+                    new(connectionId, context.Model.ProviderType, credential.Credential!),
+                    new(context.Model.DiscoveredModelId, context.Model.ProviderModelId),
+                    new(context.Model.ProviderModelId, Load("coder-v1"), conversation is null ? initialInput : null, definitions, pendingResults, conversation, maximumOutput, Reasoning(context), "low"), ct);
             }
             catch (ProviderRequestException ex)
             {
                 return Failure(ex.Code, ex.Message);
+            }
+            catch (NotSupportedException)
+            {
+                return Failure("coder_native_tools_unsupported", "The selected Coder model does not support provider-native repository tools.");
             }
             catch (HttpRequestException)
             {
@@ -153,199 +95,229 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
                 return Failure("provider_timeout", "The Coder provider timed out.");
             }
 
-            providerRounds++;
-            paidRequests += response.SameModelRequestAttemptCount;
-            requestId = response.ProviderRequestId ?? requestId;
-            providerStatus = response.ResponseStatus;
-            incompleteReason = response.IncompleteReason;
-            totalInput += response.InputTokenCount ?? 0;
-            totalOutput += response.OutputTokenCount ?? 0;
-            if (response.SafeFailureCode is { } safeCode)
-                return Failure(safeCode, SafeProviderMessage(safeCode, response), toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, noProgressCorrections, paidRequests);
-            CoderEnvelope envelope;
-            try
-            {
-                envelope = JsonSerializer.Deserialize<CoderEnvelope>(response.Content, Json) ?? throw new JsonException();
-            }
-            catch (JsonException ex)
-            {
-                if (repairs >= options.Value.MaximumStructuredOutputRepairAttempts || string.IsNullOrWhiteSpace(response.Content))
-                    return Failure("coder_invalid_structured_output", "The Coder returned invalid structured output.", toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, noProgressCorrections, paidRequests);
-                repairs++;
-                var repairInput = JsonSerializer.Serialize(new
-                {
-                    type = "structured_output_repair",
-                    schema = StructuredOutputSchema,
-                    malformedOutput = Limit(response.Content, 6000),
-                    validationError = Limit(ex.Message, 300)
-                });
-                maximumSingleRequestInput = Math.Max(maximumSingleRequestInput, EstimateTokens(repairInput));
-                try
-                {
-                    response = await adapter.CompleteAsync(new(connectionId, context.Model.ProviderType, credential.Credential!), new(context.Model.DiscoveredModelId, context.Model.ProviderModelId), new(context.Model.ProviderModelId, "Repair the supplied JSON to match the schema exactly.", repairInput, StructuredOutputSchema, 1600, Reasoning(context), "low"), ct);
-                }
-                catch (ProviderRequestException repairFailure)
-                {
-                    return Failure(repairFailure.Code, repairFailure.Message, toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, noProgressCorrections, paidRequests);
-                }
+            rounds++;
+            paidRequests += turn.SameModelRequestAttemptCount;
+            totalInput += turn.InputTokenCount ?? 0;
+            totalOutput += turn.OutputTokenCount ?? 0;
+            requestId = turn.ProviderRequestId ?? requestId;
+            providerStatus = turn.ResponseStatus;
+            incompleteReason = turn.IncompleteReason;
+            if (turn.SafeFailureCode is { } safeCode)
+                return Failure(safeCode, SafeAgentProviderMessage(safeCode, turn), toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
 
-                providerRounds++;
-                paidRequests += response.SameModelRequestAttemptCount;
-                totalInput += response.InputTokenCount ?? 0;
-                totalOutput += response.OutputTokenCount ?? 0;
-                requestId = response.ProviderRequestId ?? requestId;
-                providerStatus = response.ResponseStatus;
-                incompleteReason = response.IncompleteReason;
-                try
-                {
-                    envelope = JsonSerializer.Deserialize<CoderEnvelope>(response.Content, Json) ?? throw new JsonException();
-                }
-                catch (JsonException)
-                {
-                    return Failure("coder_invalid_structured_output", "The bounded Coder structured-output repair failed.", toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, noProgressCorrections, paidRequests);
-                }
-            }
+            conversation = turn.Conversation;
+            var results = new List<AgentToolResult>();
+            var remainingToolSteps = options.Value.MaximumCoderToolExecutions - toolSteps;
+            var unseenRepositoryCalls = turn.ToolCalls
+                .Where(call => call.Name is not ("complete_task" or "report_blocker") && !completedCalls.ContainsKey(call.CallId))
+                .Select(call => call.CallId)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            if (unseenRepositoryCalls > remainingToolSteps)
+                return Failure("coder_emergency_circuit_breaker_triggered", $"The Coder returned {unseenRepositoryCalls} new repository tool calls with only {remainingToolSteps} executions remaining. No calls from the turn were executed.", toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
 
-            responseType = envelope.Type;
-            if (envelope.Type.Equals("blocked", StringComparison.OrdinalIgnoreCase))
-                return Blocked(envelope, toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, noProgressCorrections, paidRequests, phase);
-            if (envelope.Type.Equals("complete", StringComparison.OrdinalIgnoreCase))
+            foreach (var call in turn.ToolCalls)
             {
-                var diff = await tools.GetDiffAsync(context.Workspace, ct);
-                currentDiffExists = diff.Succeeded && !string.IsNullOrWhiteSpace(diff.Output);
-                if (!repositoryInspected || successfulPatches == 0 || !currentDiffExists)
+                if (completedCalls.TryGetValue(call.CallId, out var cached))
                 {
-                    prematureCompletions++;
-                    if (prematureCompletions >= 2)
-                        return Failure("coder_protocol_failed", "The selected Coder model completed before satisfying the repository inspection and patch protocol.", toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, noProgressCorrections, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
-                    transcript.Add(new
-                    {
-                        role = "assistant",
-                        content = response.Content
-                    });
-                    transcript.Add(new
-                    {
-                        role = "user",
-                        content = JsonSerializer.Serialize(new
-                        {
-                            type = "completion_rejected",
-                            originalResponseType = envelope.Type,
-                            reason = "Completion requires a successful repository inspection, a successful apply_patch call, and a non-empty diff.",
-                            evidencePaths = evidence.Excerpts.Select(x => x.Path),
-                            state = new
-                            {
-                                repositoryInspected,
-                                successfulReads,
-                                successfulSearches,
-                                patchAttempts,
-                                successfulPatches,
-                                failedPatches,
-                                lastPatchFailureCode,
-                                currentDiffExists
-                            },
-                            instruction = "Inspect as needed, apply a real patch, verify the diff, and run focused validation before returning complete."
-                        })
-                    });
+                    results.Add(cached);
                     continue;
                 }
 
-                var changed = await tools.RunCommandAsync(context.Workspace, new("git", ["diff", "--name-only", "--"]), ct);
-                var files = changed.Succeeded ? changed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
-                return new(true, Required(envelope.Summary, "Coder summary is required."), files, envelope.ValidationNotes ?? [], toolSteps, requestId, totalInput, totalOutput, ResponseType: responseType, SuccessfulReadCount: successfulReads, SuccessfulSearchCount: successfulSearches, SuccessfulPatchCount: successfulPatches, RepositoryInspected: repositoryInspected, CurrentDiffExists: currentDiffExists, PrematureCompletionCount: prematureCompletions, ProviderRoundTripCount: providerRounds, ConsecutiveReadOnlyRounds: consecutiveReadOnlyRounds, MaximumSingleRequestInput: maximumSingleRequestInput, ProviderResponseStatus: providerStatus, ProviderIncompleteReason: incompleteReason, StructuredOutputRepairCount: repairs, NoProgressCorrectionCount: noProgressCorrections, PaidProviderRequestCount: paidRequests, CurrentPhase: "Completion", PatchAttemptCount: patchAttempts, FailedPatchCount: failedPatches, LastPatchFailureCode: lastPatchFailureCode);
+                AgentToolResult nativeResult;
+                JsonElement arguments;
+                try
+                {
+                    using var parsed = JsonDocument.Parse(call.ArgumentsJson);
+                    arguments = parsed.RootElement.Clone();
+                    if (arguments.ValueKind != JsonValueKind.Object)
+                        throw new JsonException("Arguments must be a JSON object.");
+                }
+                catch (JsonException ex)
+                {
+                    nativeResult = ToolOutput(call.CallId, new(false, string.Empty, "tool_arguments_invalid", Limit(ex.Message, 300)));
+                    completedCalls[call.CallId] = nativeResult;
+                    results.Add(nativeResult);
+                    continue;
+                }
+
+                if (call.Name is "complete_task" or "report_blocker")
+                {
+                    nativeResult = await Terminal(call, arguments, context, repositoryInspected, successfulPatches, successfulValidations, currentDiffExists, ct);
+                    var accepted = Accepted(nativeResult);
+                    if (call.Name == "complete_task" && accepted)
+                    {
+                        var changed = await tools.RunCommandAsync(context.Workspace, new("git", ["diff", "--name-only", "--"]), ct);
+                        var files = changed.Succeeded ? changed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
+                        return new(true, RequiredString(arguments, "summary"), files, StringArray(arguments, "validationNotes"), toolSteps, requestId, totalInput, totalOutput, ResponseType: "complete_task", SuccessfulReadCount: successfulReads, SuccessfulSearchCount: successfulSearches, SuccessfulPatchCount: successfulPatches, RepositoryInspected: repositoryInspected, CurrentDiffExists: true, PrematureCompletionCount: prematureCompletions, ProviderRoundTripCount: rounds, MaximumSingleRequestInput: EstimateTokens(initialInput), ProviderResponseStatus: providerStatus, ProviderIncompleteReason: incompleteReason, PaidProviderRequestCount: paidRequests, CurrentPhase: "Completion", PatchAttemptCount: patchAttempts, FailedPatchCount: failedPatches, LastPatchFailureCode: lastPatchFailureCode);
+                    }
+                    if (call.Name == "complete_task")
+                    {
+                        prematureCompletions++;
+                        if (prematureCompletions >= 2)
+                            return Failure("coder_protocol_failed", "The selected Coder model completed before satisfying the repository inspection and patch protocol.", toolSteps, requestId, totalInput, totalOutput, "complete_task", successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
+                    }
+                    if (call.Name == "report_blocker" && accepted)
+                        return BlockedNative(arguments, toolSteps, requestId, totalInput, totalOutput, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, rounds, paidRequests, patchAttempts, failedPatches, lastPatchFailureCode);
+                }
+                else
+                {
+                    var repositoryResult = await Execute(new(call.CallId, call.Name, arguments), context.Workspace, ct);
+                    toolSteps++;
+                    toolCounts[call.Name] = toolCounts.GetValueOrDefault(call.Name) + 1;
+                    if (repositoryResult.Succeeded && call.Name == "read_file")
+                    {
+                        successfulReads++;
+                        repositoryInspected = true;
+                    }
+                    if (repositoryResult.Succeeded && call.Name == "search_text")
+                    {
+                        successfulSearches++;
+                        repositoryInspected = true;
+                    }
+                    if (call.Name == "apply_patch")
+                    {
+                        patchAttempts++;
+                        phase = "Implementation";
+                        if (repositoryResult.Succeeded)
+                        {
+                            successfulPatches++;
+                            successfulValidations = 0;
+                            lastPatchFailureCode = null;
+                        }
+                        else
+                        {
+                            failedPatches++;
+                            lastPatchFailureCode = SafePatchFailureCode(repositoryResult.FailureCode);
+                        }
+                    }
+                    if (call.Name == "get_diff")
+                        currentDiffExists = repositoryResult.Succeeded && !string.IsNullOrWhiteSpace(repositoryResult.Output);
+                    if (call.Name == "run_command" && successfulPatches > 0 && repositoryResult.Succeeded)
+                    {
+                        successfulValidations++;
+                        phase = "Validation";
+                    }
+                    nativeResult = ToolOutput(call.CallId, repositoryResult);
+                }
+
+                completedCalls[call.CallId] = nativeResult;
+                results.Add(nativeResult);
             }
-
-            if (!envelope.Type.Equals("tool_calls", StringComparison.OrdinalIgnoreCase) || envelope.Calls is null || envelope.Calls.Count == 0)
-                return Failure("coder_protocol_failed", "The Coder must return tool calls, complete, or blocked.", toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions);
-            var patchCountBefore = successfulPatches;
-            var results = new List<object>();
-            foreach (var call in envelope.Calls.Take(Math.Min(8, options.Value.MaximumCoderToolExecutions - toolSteps)))
-            {
-                ct.ThrowIfCancellationRequested();
-                var result = await Execute(call, context.Workspace, ct);
-                toolSteps++;
-                toolCounts[call.Tool] = toolCounts.GetValueOrDefault(call.Tool) + 1;
-                if (result.Succeeded && call.Tool.Equals("read_file", StringComparison.OrdinalIgnoreCase))
-                {
-                    successfulReads++;
-                    repositoryInspected = true;
-                }
-
-                if (result.Succeeded && call.Tool.Equals("search_text", StringComparison.OrdinalIgnoreCase))
-                {
-                    successfulSearches++;
-                    repositoryInspected = true;
-                }
-
-                if (call.Tool.Equals("apply_patch", StringComparison.OrdinalIgnoreCase))
-                {
-                    patchAttempts++;
-                    phase = "Implementation";
-                    if (result.Succeeded)
-                    {
-                        successfulPatches++;
-                        lastPatchFailureCode = null;
-                    }
-                    else
-                    {
-                        failedPatches++;
-                        lastPatchFailureCode = SafePatchFailureCode(result.FailureCode);
-                    }
-                }
-
-                if (call.Tool.Equals("get_diff", StringComparison.OrdinalIgnoreCase))
-                    currentDiffExists = result.Succeeded && !string.IsNullOrWhiteSpace(result.Output);
-                if (call.Tool.Equals("run_command", StringComparison.OrdinalIgnoreCase) && successfulPatches > 0)
-                    phase = "Validation";
-                results.Add(new
-                {
-                    call.Id,
-                    call.Tool,
-                    result.Succeeded,
-                    Output = Limit(result.Output, Math.Min(options.Value.MaximumToolOutputCharacters, 24_000)),
-                    result.FailureCode,
-                    result.FailureMessage,
-                    result.Truncated
-                });
-            }
-
-            consecutiveReadOnlyRounds = successfulPatches > patchCountBefore ? 0 : consecutiveReadOnlyRounds + 1;
-            transcript.Add(new
-            {
-                role = "assistant",
-                content = response.Content
-            });
-            transcript.Add(new
-            {
-                role = "user",
-                content = JsonSerializer.Serialize(new
-                {
-                    type = "tool_results",
-                    results,
-                    state = new
-                    {
-                        repositoryInspected,
-                        successfulReads,
-                        successfulSearches,
-                        patchAttempts,
-                        successfulPatches,
-                        failedPatches,
-                        lastPatchFailureCode,
-                        currentDiffExists,
-                        toolSteps,
-                        providerRounds,
-                        phase
-                    }
-                })
-            });
+            pendingResults = results;
         }
 
-        return Failure("coder_emergency_circuit_breaker_triggered", $"The Coder reached the emergency circuit breaker after {providerRounds} provider rounds and {toolSteps} repository tool executions. {ToolSummary(toolCounts)}", toolSteps, requestId, totalInput, totalOutput, responseType, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, providerRounds, consecutiveReadOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
+        return Failure("coder_emergency_circuit_breaker_triggered", $"The Coder reached the emergency circuit breaker after {rounds} provider rounds and {toolSteps} repository tool executions. {ToolSummary(toolCounts)}", toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
+    }
+
+    internal static IReadOnlyList<AgentToolDefinition> NativeTools() =>
+    [
+        Definition("list_files", "List safe repository-relative files under a directory.", """{"type":"object","additionalProperties":false,"required":["path"],"properties":{"path":{"type":"string"}}}"""),
+        Definition("read_file", "Read a safe repository-relative text file.", """{"type":"object","additionalProperties":false,"required":["path"],"properties":{"path":{"type":"string"}}}"""),
+        Definition("search_text", "Search repository text under a safe relative path.", """{"type":"object","additionalProperties":false,"required":["query","path"],"properties":{"query":{"type":"string"},"path":{"type":"string"}}}"""),
+        Definition("apply_patch", "Apply one standard Git unified diff to the task workspace. The patch must begin with 'diff --git' and include ---/+++ file headers and @@ hunks. Do not use '*** Begin Patch' markers.", """{"type":"object","additionalProperties":false,"required":["patch"],"properties":{"patch":{"type":"string"}}}"""),
+        Definition("get_diff", "Get the current incremental Git diff.", """{"type":"object","additionalProperties":false,"required":[],"properties":{}}"""),
+        Definition("run_command", "Run an allow-listed focused validation command in the workspace.", """{"type":"object","additionalProperties":false,"required":["executable","arguments","workingDirectory","timeoutSeconds"],"properties":{"executable":{"type":"string"},"arguments":{"type":"array","items":{"type":"string"}},"workingDirectory":{"type":"string"},"timeoutSeconds":{"type":"integer","minimum":1,"maximum":600}}}"""),
+        Definition("complete_task", "Finish only after inspection, a successful patch, a non-empty verified diff, and focused validation.", """{"type":"object","additionalProperties":false,"required":["summary","validationNotes","knownLimitations"],"properties":{"summary":{"type":"string"},"validationNotes":{"type":"array","items":{"type":"string"}},"knownLimitations":{"type":"array","items":{"type":"string"}}}}"""),
+        Definition("report_blocker", "Report a precise repository blocker that prevents a safe implementation.", """{"type":"object","additionalProperties":false,"required":["blockerCode","blockerMessage","missingEvidencePaths"],"properties":{"blockerCode":{"type":"string","enum":["missing_repository_evidence","repository_contract_mismatch","safe_implementation_blocked"]},"blockerMessage":{"type":"string"},"missingEvidencePaths":{"type":"array","items":{"type":"string"}}}}""")
+    ];
+
+    private static AgentToolDefinition Definition(string name, string description, string schema)
+    {
+        using var document = JsonDocument.Parse(schema);
+        return new(name, description, document.RootElement.Clone());
+    }
+
+    private async Task<AgentToolResult> Terminal(AgentToolCall call, JsonElement arguments, CoderContext context, bool inspected, int patches, int validations, bool knownDiff, CancellationToken ct)
+    {
+        try
+        {
+            ValidateArguments(call.Name, arguments);
+            if (call.Name == "report_blocker")
+            {
+                var blockerCode = RequiredString(arguments, "blockerCode");
+                if (blockerCode is not ("missing_repository_evidence" or "repository_contract_mismatch" or "safe_implementation_blocked"))
+                    throw new ArgumentException("blockerCode is not supported.");
+                _ = RequiredString(arguments, "blockerMessage");
+                _ = StringArray(arguments, "missingEvidencePaths");
+                return new(call.CallId, JsonSerializer.Serialize(new
+                {
+                    accepted = true
+                }));
+            }
+            var diff = await tools.GetDiffAsync(context.Workspace, ct);
+            var currentDiff = diff.Succeeded && !string.IsNullOrWhiteSpace(diff.Output);
+            if (!inspected || patches == 0 || validations == 0 || !currentDiff)
+                return new(call.CallId, JsonSerializer.Serialize(new
+                {
+                    accepted = false,
+                    failureCode = "completion_rejected",
+                    failureMessage = "Completion requires repository inspection, a successful patch, successful focused validation after patching, and a current non-empty Git diff.",
+                    state = new
+                    {
+                        inspected,
+                        successfulPatches = patches,
+                        successfulValidations = validations,
+                        currentDiff,
+                        previouslyObservedDiff = knownDiff
+                    }
+                }));
+            return new(call.CallId, JsonSerializer.Serialize(new
+            {
+                accepted = true
+            }));
+        }
+        catch (Exception ex) when (ex is ArgumentException or JsonException)
+        {
+            return new(call.CallId, JsonSerializer.Serialize(new
+            {
+                accepted = false,
+                failureCode = "tool_arguments_invalid",
+                failureMessage = Limit(ex.Message, 300)
+            }));
+        }
+    }
+
+    private static AgentToolResult ToolOutput(string callId, RepositoryToolResult result) => new(callId, JsonSerializer.Serialize(new
+    {
+        result.Succeeded,
+        Output = Limit(result.Output, 24_000),
+        result.FailureCode,
+        result.FailureMessage,
+        result.Truncated
+    }));
+
+    private static bool Accepted(AgentToolResult result)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            return document.RootElement.TryGetProperty("accepted", out var accepted) && accepted.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static CoderResult BlockedNative(JsonElement arguments, int steps, string? requestId, int input, int output, int reads, int searches, int patches, bool inspected, bool diff, int rounds, int paid, int patchAttempts, int failedPatches, string? lastPatchFailureCode)
+    {
+        var blocker = RequiredString(arguments, "blockerCode");
+        var code = blocker switch
+        {
+            "missing_repository_evidence" when StringArray(arguments, "missingEvidencePaths").Count > 0 => "coder_missing_repository_evidence",
+            "repository_contract_mismatch" => "coder_repository_contract_mismatch",
+            "safe_implementation_blocked" => "coder_safe_implementation_blocked",
+            _ => "coder_protocol_failed"
+        };
+        return Failure(code, Limit(RequiredString(arguments, "blockerMessage"), 500), steps, requestId, input, output, "report_blocker", reads, searches, patches, inspected, diff, 0, rounds, 0, 0, null, null, 0, 0, paid, "Blocked", null, patchAttempts, failedPatches, lastPatchFailureCode);
     }
 
     private async Task<RepositoryToolResult> Execute(ToolCall call, WorkspaceReference workspace, CancellationToken ct)
     {
         try
         {
+            ValidateArguments(call.Tool, call.Arguments);
             return call.Tool switch
             {
                 "list_files" => await tools.ListFilesAsync(workspace, Arg(call, "path", "."), ct),
@@ -363,30 +335,46 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
         }
     }
 
+    private static void ValidateArguments(string tool, JsonElement arguments)
+    {
+        var required = tool switch
+        {
+            "list_files" or "read_file" => new[] { "path" },
+            "search_text" => ["query", "path"],
+            "apply_patch" => ["patch"],
+            "get_diff" => [],
+            "run_command" => ["executable", "arguments", "workingDirectory", "timeoutSeconds"],
+            "complete_task" => ["summary", "validationNotes", "knownLimitations"],
+            "report_blocker" => ["blockerCode", "blockerMessage", "missingEvidencePaths"],
+            _ => throw new ArgumentException("Unknown tool.")
+        };
+        var allowed = required.ToHashSet(StringComparer.Ordinal);
+        if (arguments.EnumerateObject().Any(x => !allowed.Contains(x.Name)))
+            throw new ArgumentException("Tool arguments contain an unsupported property.");
+        if (required.Any(name => !arguments.TryGetProperty(name, out _)))
+            throw new ArgumentException("Tool arguments are missing a required property.");
+    }
+
+    private static string RequiredString(JsonElement arguments, string name) => arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()!.Trim() : throw new ArgumentException($"{name} is required.");
+    private static IReadOnlyList<string> StringArray(JsonElement arguments, string name) => arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array && value.EnumerateArray().All(x => x.ValueKind == JsonValueKind.String) ? value.EnumerateArray().Select(x => x.GetString()!).ToList() : throw new ArgumentException($"{name} must be a string array.");
+
     private static string Arg(ToolCall call, string name, string? fallback = null) => call.Arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : fallback ?? throw new ArgumentException($"{name} is required.");
     private static int IntArg(ToolCall call, string name, int fallback) => call.Arguments.TryGetProperty(name, out var value) && value.TryGetInt32(out var result) ? result : fallback;
     private static string[] Args(ToolCall call) => call.Arguments.TryGetProperty("arguments", out var value) && value.ValueKind == JsonValueKind.Array ? value.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToArray() : [];
-    private static string? SerializeTranscript(List<object> transcript, int contextWindowTokens)
-    {
-        var value = JsonSerializer.Serialize(transcript);
-        return EstimateTokens(value) < contextWindowTokens ? value : null;
-    }
-
     private static string Limit(string value, int maximum) => value.Length <= maximum ? value : value[..maximum] + "\n[tool output truncated by the repository-tool safety limit]";
     private static int EstimateTokens(string value) => (value.Length + 2) / 3;
     private static string Reasoning(CoderContext context) => context.AcceptanceCriteria.Count <= 3 && context.RepositoryEvidence?.Count <= 2 ? "low" : "medium";
     private static string? SafePatchFailureCode(string? code) => string.IsNullOrWhiteSpace(code) ? "patch_failed" : Limit(code, 100);
-    private static string SafeProviderMessage(string code, LanguageModelResponse response) => code switch
+    private static string SafeAgentProviderMessage(string code, AgentTurnResponse response) => code switch
     {
         "provider_output_truncated" => $"The provider output was truncated ({response.IncompleteReason ?? "unknown reason"}).",
         "provider_refused" => "The provider refused the Coder request.",
         "provider_response_failed" => "The provider failed while producing the Coder response.",
-        "provider_missing_output" => "The provider completed without output content.",
+        "provider_missing_tool_call" => "The provider completed without a native Coder tool call.",
         _ => "The provider response could not be used."
     };
     private static CoderResult Failure(string code, string message) => new(false, string.Empty, [], [], 0, null, null, null, code, message);
     private static string Required(string? value, string message) => string.IsNullOrWhiteSpace(value) ? throw new InvalidDataException(message) : value.Trim();
-    internal const string StructuredOutputSchema = """{"type":"object","additionalProperties":false,"required":["type","calls","summary","validationNotes","knownLimitations","blockerCode","blockerMessage","missingEvidencePaths"],"properties":{"type":{"enum":["tool_calls","complete","blocked"]},"calls":{"type":["array","null"],"items":{"type":"object","additionalProperties":false,"required":["id","tool","arguments"],"properties":{"id":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object","additionalProperties":false,"required":["path","query","patch","executable","arguments","workingDirectory","timeoutSeconds"],"properties":{"path":{"type":["string","null"]},"query":{"type":["string","null"]},"patch":{"type":["string","null"]},"executable":{"type":["string","null"]},"arguments":{"type":["array","null"],"items":{"type":"string"}},"workingDirectory":{"type":["string","null"]},"timeoutSeconds":{"type":["integer","null"]}}}}}},"summary":{"type":["string","null"]},"validationNotes":{"type":["array","null"],"items":{"type":"string"}},"knownLimitations":{"type":["array","null"],"items":{"type":"string"}},"blockerCode":{"type":["string","null"]},"blockerMessage":{"type":["string","null"]},"missingEvidencePaths":{"type":["array","null"],"items":{"type":"string"}}}}""";
     private static string Load(string version) => PromptLoader.Load(version);
     private async Task<EvidencePreloadResult> PreloadEvidence(WorkspaceReference workspace, IReadOnlyList<string> paths, CancellationToken ct)
     {
@@ -431,20 +419,6 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
 
     private static string ToolSummary(IReadOnlyDictionary<string, int> counts) => counts.Count == 0 ? "No repository tools were used." : "Tool usage: " + string.Join(", ", counts.OrderBy(x => x.Key).Select(x => $"{x.Key}={x.Value}")) + ".";
     private static CoderResult Failure(string code, string message, int toolSteps, string? requestId, int? input, int? output, string? responseType = null, int reads = 0, int searches = 0, int patches = 0, bool inspected = false, bool diff = false, int premature = 0, int providerRounds = 0, int readOnlyRounds = 0, int maximumSingleRequestInput = 0, string? providerStatus = null, string? incompleteReason = null, int repairs = 0, int corrections = 0, int paidRequests = 0, string phase = "Discovery", string? prohibitedTool = null, int patchAttempts = 0, int failedPatches = 0, string? lastPatchFailureCode = null) => new(false, string.Empty, [], [], toolSteps, requestId, input, output, code, message, responseType, reads, searches, patches, inspected, diff, premature, providerRounds, readOnlyRounds, maximumSingleRequestInput, providerStatus, incompleteReason, repairs, corrections, paidRequests, phase, prohibitedTool, patchAttempts, failedPatches, lastPatchFailureCode);
-    private static CoderResult Blocked(CoderEnvelope envelope, int toolSteps, string? requestId, int? input, int? output, string? responseType, int reads, int searches, int patches, bool inspected, bool diff, int premature, int rounds, int readOnly, int maxInput, string? status, string? incomplete, int repairs, int corrections, int paid, string phase)
-    {
-        var code = envelope.BlockerCode switch
-        {
-            "missing_repository_evidence" when envelope.MissingEvidencePaths?.Count > 0 => "coder_missing_repository_evidence",
-            "repository_contract_mismatch" => "coder_repository_contract_mismatch",
-            "safe_implementation_blocked" => "coder_safe_implementation_blocked",
-            _ => "coder_protocol_failed"
-        };
-        var message = string.IsNullOrWhiteSpace(envelope.BlockerMessage) ? "The Coder reported a safe implementation blocker." : Limit(envelope.BlockerMessage, 500);
-        return Failure(code, message, toolSteps, requestId, input, output, responseType, reads, searches, patches, inspected, diff, premature, rounds, readOnly, maxInput, status, incomplete, repairs, corrections, paid, "Blocked");
-    }
-
     private sealed record EvidencePreloadResult(bool Succeeded, IReadOnlyList<RepositoryEvidenceExcerpt> Excerpts, string? FailureCode, string? FailureMessage);
-    private sealed record CoderEnvelope(string Type, List<ToolCall>? Calls, string? Summary, List<string>? ValidationNotes, List<string>? KnownLimitations, string? BlockerCode, List<string>? MissingEvidencePaths, string? BlockerMessage);
     private sealed record ToolCall(string Id, string Tool, JsonElement Arguments);
 }
