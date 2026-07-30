@@ -2,6 +2,7 @@ using Impersonate.Domain.Ai;
 using Impersonate.Domain.Delivery;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Domain.Projects;
+using Impersonate.Domain.Quality;
 using Impersonate.Infrastructure.Ai;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,5 +22,7 @@ public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> 
     public DbSet<ProjectAiRoutingPolicy> ProjectAiRoutingPolicies => Set<ProjectAiRoutingPolicy>();
     public DbSet<ModelSelectionDecision> ModelSelectionDecisions => Set<ModelSelectionDecision>();
     public DbSet<ProviderCredentialSecret> ProviderCredentialSecrets => Set<ProviderCredentialSecret>();
+    public DbSet<ProjectCodeQualityConfiguration> ProjectCodeQualityConfigurations => Set<ProjectCodeQualityConfiguration>();
+    public DbSet<Impersonate.Infrastructure.Quality.CodeQualityCredentialSecret> CodeQualityCredentialSecrets => Set<Impersonate.Infrastructure.Quality.CodeQualityCredentialSecret>();
     protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ImpersonateDbContext).Assembly);
 }

@@ -5,6 +5,7 @@ using Impersonate.Application.Execution;
 using Impersonate.Application.Pipelines;
 using Impersonate.Application.Planning;
 using Impersonate.Application.Projects;
+using Impersonate.Application.Quality;
 using Impersonate.Domain.Ai;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Domain.Projects;
@@ -12,6 +13,8 @@ using Impersonate.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<ITaskControlService, TaskControlService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IProjectQualityService, ProjectQualityService>();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
@@ -135,6 +138,12 @@ projects.MapPatch("/{projectId:guid}/status", async (Guid projectId, ChangeStatu
     }
 });
 projects.MapGet("/{projectId:guid}/health", async (Guid projectId, IProjectService service, CancellationToken ct) => (await service.GetHealthAsync(projectId, ct)) is { } summary ? Results.Ok(summary) : Results.NotFound());
+projects.MapGet("/{projectId:guid}/quality/configuration", async (Guid projectId, IProjectQualityService service, CancellationToken ct) => (await service.GetConfigurationAsync(projectId, ct)) is { } value ? Results.Ok(value) : Results.NotFound(new ApiError("not_found", "Project was not found.")));
+projects.MapPut("/{projectId:guid}/quality/configuration", async (Guid projectId, SaveProjectQualityConfigurationRequest request, IProjectQualityService service, CancellationToken ct) => { try { return (await service.SaveAsync(projectId, request, ct)) is { } value ? Results.Ok(value) : Results.NotFound(new ApiError("not_found", "Project was not found.")); } catch (ArgumentException ex) { return Results.BadRequest(new ApiError("quality_configuration_invalid", ex.Message)); } });
+projects.MapPost("/{projectId:guid}/quality/validate", async (Guid projectId, IProjectQualityService service, CancellationToken ct) => (await service.ValidateAsync(projectId, ct)) is { } value ? Results.Ok(value) : Results.NotFound(new ApiError("not_found", "Project was not found.")));
+projects.MapGet("/{projectId:guid}/quality/summary", async (Guid projectId, IProjectQualityService service, CancellationToken ct) => (await service.GetSummaryAsync(projectId, false, ct)) is { } value ? Results.Ok(value) : Results.NotFound(new ApiError("not_found", "Project was not found.")));
+projects.MapPost("/{projectId:guid}/quality/refresh", async (Guid projectId, IProjectQualityService service, CancellationToken ct) => (await service.GetSummaryAsync(projectId, true, ct)) is { } value ? Results.Ok(value) : Results.NotFound(new ApiError("not_found", "Project was not found.")));
+projects.MapDelete("/{projectId:guid}/quality/configuration", async (Guid projectId, IProjectQualityService service, CancellationToken ct) => await service.RemoveAsync(projectId, ct) ? Results.NoContent() : Results.NotFound(new ApiError("quality_not_configured", "Code quality is not configured.")));
 var runs = projects.MapGroup("/{projectId:guid}/pipeline-runs");
 projects.MapPost("/{projectId:guid}/ai/model-selection/preview", async (Guid projectId, ModelSelectionPreviewRequest request, IProjectAiService service, CancellationToken ct) => (await service.PreviewAsync(projectId, request.Role, request.Description, request.ManualModelOverrideId, ct)) is { } result ? Results.Ok(result) : Results.NotFound(new ApiError("not_found", "Project was not found.")));
 projects.MapGet("/{projectId:guid}/ai/readiness", async (Guid projectId, IProjectAiService service, CancellationToken ct) => (await service.GetReadinessAsync(projectId, ct)) is { } result ? Results.Ok(result) : Results.NotFound(new ApiError("not_found", "Project was not found.")));

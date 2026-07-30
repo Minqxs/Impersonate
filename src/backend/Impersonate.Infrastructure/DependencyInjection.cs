@@ -4,11 +4,13 @@ using Impersonate.Application.Execution;
 using Impersonate.Application.Pipelines;
 using Impersonate.Application.Planning;
 using Impersonate.Application.Projects;
+using Impersonate.Application.Quality;
 using Impersonate.Infrastructure.Agents.Execution;
 using Impersonate.Infrastructure.Agents.Planner;
 using Impersonate.Infrastructure.Ai;
 using Impersonate.Infrastructure.Execution;
 using Impersonate.Infrastructure.Persistence;
+using Impersonate.Infrastructure.Quality;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -24,6 +26,8 @@ public static class DependencyInjection
     {
         services.AddOptions<ExecutionOptions>().BindConfiguration("Execution").Validate(x => x.MaximumArtifactBytes is >= 1024 and <= 10_000_000 && x.MaximumToolOutputCharacters is >= 1000 and <= 1_000_000 && x.MaximumCoderProviderRounds is >= 1 and <= 100 && x.MaximumCoderToolExecutions is >= 1 and <= 500 && x.DefaultCoderMaximumOutputTokens is >= 1000 and <= 100_000 && x.DefaultReviewerMaximumOutputTokens is >= 1000 and <= 100_000 && x.DefaultModelContextWindowTokens is >= 8000 and <= 2_000_000 && x.CommandTimeoutSeconds is >= 1 and <= 600 && x.ClaimMinutes is >= 1 and <= 120 && x.MaximumWorkspacePreparationAttempts is >= 1 and <= 5 && x.MaximumSameModelRateLimitRetries is >= 0 and <= 10 && x.MaximumAutomaticRateLimitWaitSeconds is >= 0 and <= 300 && x.MaximumTotalRateLimitWaitSecondsPerOperation is >= 0 and <= 900 && x.InitialRateLimitBackoffMilliseconds is >= 1 and <= 60_000 && x.MaximumRateLimitBackoffSeconds is >= 1 and <= 300 && x.RateLimitJitterMaximumMilliseconds is >= 0 and <= 10_000, "Execution limits are invalid.").Validate(x => environment.IsDevelopment() || environment.IsEnvironment("Testing") || (!string.IsNullOrWhiteSpace(x.WorkspaceRoot) && !string.IsNullOrWhiteSpace(x.ArtifactRoot)), "Production requires explicit durable execution roots.").ValidateOnStart();
         services.AddSingleton(TimeProvider.System);
+        services.AddMemoryCache();
+        services.AddSingleton<IProjectQualityCache, MemoryProjectQualityCache>();
         services.AddSingleton<ProviderCapacityCoordinator>();
         services.AddSingleton<IChildProcessEnvironmentBuilder, AllowlistedChildProcessEnvironmentBuilder>();
         services.AddSingleton<SafeProcess>();
@@ -44,6 +48,8 @@ public static class DependencyInjection
             services.AddScoped<IExecutionInvocationStore, EfExecutionInvocationStore>();
             services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
             services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();
+            services.AddScoped<IProjectQualityRepository, EfProjectQualityRepository>();
+            services.AddScoped<ICodeQualityCredentialStore, DataProtectionCodeQualityCredentialStore>();
             services.AddScoped<IModelUsageService, ModelUsageService>();
         }
 
@@ -51,6 +57,9 @@ public static class DependencyInjection
         var keyPath = DataProtectionKeyPathResolver.Resolve(configuration["Ai:DataProtectionKeyPath"], allowDevelopmentDefault);
         services.AddSingleton(new DataProtectionKeyRingLocation(keyPath));
         services.AddDataProtection().SetApplicationName("Impersonate").PersistKeysToFileSystem(new DirectoryInfo(keyPath));
+        services.AddOptions<SonarQubeOptions>().BindConfiguration("CodeQuality:SonarQube").Validate(x => x.TimeoutSeconds is >= 1 and <= 60, "SonarQube timeout is invalid.").ValidateOnStart();
+        services.AddSingleton<ISonarQubeEndpointPolicy, SonarQubeEndpointPolicy>();
+        services.AddHttpClient<ICodeQualityProvider, SonarQubeProvider>((provider, client) => client.Timeout = TimeSpan.FromSeconds(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SonarQubeOptions>>().Value.TimeoutSeconds)).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<AnthropicProviderAdapter>(x =>
         {
             x.BaseAddress = new("https://api.anthropic.com/");
