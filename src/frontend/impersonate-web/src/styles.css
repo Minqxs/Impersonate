@@ -3,6 +3,6 @@
 @tailwind utilities;
 
 @layer base {
-  html, body, #root { min-height: 100%; }
+  html, body, #root { min-height: 100%; max-width: 100%; overflow-x: hidden; }
   body { margin: 0; }
 }

@@ -1,12 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { ActiveProjectProvider, useActiveProject } from './ActiveProjectContext';
 import { activeProjectStorageKey } from './activeProjectStorage';
 import { ProjectSelector } from './components/ProjectSelector';
 import { CreateProjectPage, ProjectsPage } from './pages/ProjectsPages';
+import { ProjectWorkspaceLayout } from './layouts/ProjectWorkspaceLayout';
+import { ProjectOverviewPage } from './pages/ProjectOverviewPage';
 
 const project = { id: '11111111-1111-1111-1111-111111111111', name: 'Alpha', repositoryUrl: 'https://github.com/example/alpha', defaultBranch: 'main', status: 'Idle', createdAtUtc: '2026-07-20T00:00:00Z', updatedAtUtc: '2026-07-20T00:00:00Z' };
 
@@ -58,5 +60,23 @@ describe('project workspace frontend', () => {
     vi.mocked(fetch).mockImplementation(() => Promise.reject(new Error('Network unavailable')));
     render(<Wrapper><ProjectsPage /></Wrapper>);
     expect(await screen.findByText('Network unavailable')).toBeInTheDocument();
+  });
+
+  it('uses current-page semantics in responsive project navigation', async () => {
+    vi.mocked(fetch).mockImplementation(() => response(project));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${project.id}/quality`]}><ActiveProjectProvider><Routes><Route path="/projects/:projectId" element={<ProjectWorkspaceLayout />}><Route path="quality" element={<Outlet />} /></Route></Routes></ActiveProjectProvider></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByRole('tab', { name: 'Code Quality' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('tablist', { name: 'Project navigation' })).toBeInTheDocument();
+  });
+
+  it('summarises project operations and exposes quick actions', async () => {
+    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/health') ? response({ projectId: project.id, overallStatus: 'Healthy', checks: [{ name: 'Repository', status: 'Ready', message: 'Configured' }], checkedAtUtc: '2026-07-20' }) : String(input).includes('/pipeline-runs') ? response([{ id: 'run-1', projectId: project.id, featureRequest: 'Feature', status: 'ReadyForDelivery', createdAtUtc: '2026-07-20', loop: { currentStage: 'Committing' }, tasks: [{ id: 'task', status: 'Approved', deliveryEligible: true }] }]) : response(project));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${project.id}/dashboard`]}><Routes><Route path="/projects/:projectId/dashboard" element={<ProjectOverviewPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByText('Operational status')).toBeInTheDocument();
+    expect(screen.getByText('Approved tasks')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Create run' })).toHaveAttribute('href', `/projects/${project.id}/runs/new`);
+    expect(screen.getByRole('link', { name: 'View delivery' })).toBeInTheDocument();
   });
 });

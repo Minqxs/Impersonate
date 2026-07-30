@@ -1,0 +1,2 @@
+import { Chip } from '@mui/material';
+export function StateChip({ value }: { value: string }) { const label=value.replace(/([a-z])([A-Z])/g,'$1 $2'); const color=value.includes('Completed')||value.startsWith('ReadyFor')||['Succeeded','Approved','Eligible','Merged'].includes(value)?'success':value.includes('Failed')?'error':['WaitingForClarification','InvalidOutput','TimedOut','ChangesRequested','Skipped','Blocked'].includes(value)?'warning':'primary'; return <Chip size="small" label={label} color={color} variant="outlined" />; }
