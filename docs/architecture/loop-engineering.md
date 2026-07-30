@@ -42,6 +42,8 @@ The initial exercise uses reviewer approval as the mandatory commit gate.
 
 ## First-class concepts
 
+Delivery refines the commit portion into per-task durable state. A run never becomes one branch or one pull request. Each approved task has its own delivery identity, and dependent delivery waits for merged dependencies.
+
 - LoopDefinition
 - LoopRegistry
 - LoopRun

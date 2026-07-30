@@ -1,4 +1,5 @@
 using Impersonate.Domain.Ai;
+using Impersonate.Domain.Delivery;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Domain.Projects;
 using Impersonate.Infrastructure.Ai;
@@ -14,6 +15,7 @@ public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> 
     public DbSet<TaskAttempt> TaskAttempts => Set<TaskAttempt>();
     public DbSet<ExecutionInvocation> ExecutionInvocations => Set<ExecutionInvocation>();
     public DbSet<ReviewDecision> ReviewDecisions => Set<ReviewDecision>();
+    public DbSet<TaskDelivery> TaskDeliveries => Set<TaskDelivery>();
     public DbSet<AiProviderConnection> AiProviderConnections => Set<AiProviderConnection>();
     public DbSet<DiscoveredModel> DiscoveredModels => Set<DiscoveredModel>();
     public DbSet<ProjectAiRoutingPolicy> ProjectAiRoutingPolicies => Set<ProjectAiRoutingPolicy>();

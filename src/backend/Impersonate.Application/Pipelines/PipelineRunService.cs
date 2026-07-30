@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Impersonate.Application.Ai;
+using Impersonate.Application.Delivery;
 using Impersonate.Application.Execution;
 using Impersonate.Application.Planning;
 using Impersonate.Application.Projects;
@@ -248,7 +249,44 @@ internal sealed class PipelineRunService(IProjectRepository projects, IPipelineR
         return result.Succeeded && result.Selection is { } choice ? new(true, choice.DiscoveredModelId, choice.ProviderType.ToString(), choice.ProviderModelId, choice.Source.ToString(), choice.Explanation, null, choice.Score, choice.ScoreBreakdown, choice.MetadataVersion, result.Profile, result.EligibleAlternatives.Take(3).ToList(), new(choice.DiscoveredModelId, choice.ProviderType, choice.ProviderModelId, choice.CanonicalFamily ?? "unknown", choice.Generation ?? "unknown", choice.Specialisation ?? "Unknown")) : new(false, null, null, null, null, null, result.FailureMessage, Profile: result.Profile, Alternatives: result.EligibleAlternatives.Take(3).ToList());
     }
 
-    private static PipelineRunDto Map(PipelineRun r, IReadOnlyList<PlanningAttempt>? attempts = null, IReadOnlyList<ExecutionInvocation>? executionInvocations = null) => new(r.Id, r.ProjectId, r.FeatureRequest, r.Status, r.CreatedAtUtc, r.StartedAtUtc, r.CompletedAtUtc, r.CancelledAtUtc, r.FailureReason, r.StopReason, new(r.LoopRun.Id, r.LoopRun.LoopDefinitionId, r.LoopRun.LoopDefinitionVersion, r.LoopRun.Status, r.LoopRun.CurrentStage, r.LoopRun.MaximumRevisionAttempts, r.LoopRun.ContinueOnTaskFailure, r.LoopRun.RetryCount, r.LoopRun.StartedAtUtc, r.LoopRun.CompletedAtUtc, r.LoopRun.StopReason, r.LoopRun.FailureReason), r.Tasks.Select(t => new PlannedTaskDto(t.Id, t.Sequence, t.Title, t.Description, t.AcceptanceCriteria, t.Status, t.RevisionCount, t.MaximumRevisionAttempts, t.CoderModelOverrideId, t.ReviewerModelOverrideId, t.Attempts.Select(a => new TaskAttemptDto(a.Id, a.AttemptNumber, a.AttemptType, a.Status, a.Provider, a.Model, a.PromptVersion, a.InputTokenCount, a.OutputTokenCount, a.ToolStepCount, a.Summary, a.FailureCode, a.FailureReason, Deserialize(a.ChangedFilesJson), a.PatchArtifactReference, a.PatchSha256, Deserialize(a.ValidationSummaryJson), a.StartedAtUtc, a.CompletedAtUtc, (executionInvocations ?? []).Where(i => i.TaskAttemptId == a.Id).Select(i => new ExecutionInvocationDto(i.Id, i.Sequence, i.AgentRole, i.Provider, i.Model, i.PromptVersion, i.ProviderRequestId, i.InputTokenCount, i.OutputTokenCount, i.ResponseType, i.ToolStepCount, i.SuccessfulReadCount, i.SuccessfulSearchCount, i.SuccessfulPatchCount, i.FallbackSequence, i.Status, i.FailureCode, i.FailureReason, i.StartedAtUtc, i.CompletedAtUtc, i.ProviderRoundTripCount, i.ConsecutiveReadOnlyRounds, i.MaximumSingleRequestInput, i.ProviderResponseStatus, i.ProviderIncompleteReason, i.StructuredOutputRepairCount, i.NoProgressCorrectionCount, i.PaidProviderRequestCount, i.CurrentPhase, i.RequestedProhibitedTool, i.PatchAttemptCount, i.FailedPatchCount, i.LastPatchFailureCode, i.MaximumRequestedOutputReservation, Deserialize(i.OutputReservationReasonsJson), i.ProviderCapacityWaitMilliseconds, i.ProviderResetUsed, i.LastRateLimitScope)).ToList(), a.SourceBaseCommitSha, a.DependencyPatchCount, DeserializeGuids(a.DependencyTaskIdsJson), a.ComposedTreeFingerprint, a.CurrentRevisionPatchApplied, a.IncrementalPatchFileCount, a.CompositionStatus)).ToList(), t.ReviewDecisions.Select(x => new ReviewDecisionDto(x.Id, x.TaskAttemptId, x.Decision, x.Provider, x.Model, x.PromptVersion, x.InputTokenCount, x.OutputTokenCount, x.ReviewedPatchSha256, x.Summary, x.Feedback, x.FindingsJson, x.IsCurrent, x.CreatedAtUtc)).ToList(), t.SkipReason, t.FailureReason, DeserializeGuids(t.DependsOnTaskIdsJson), Deserialize(t.AffectedAreasJson), t.ChangeType, t.Risk, t.ConflictRisk, t.ExecutionReason, Deserialize(t.RepositoryEvidenceJson), t.OriginalPlannerSequence, t.OrderAdjusted, t.OrderAdjustmentReason, t.EstablishesSharedContract)).ToList(), (attempts ?? []).Select(a => new PlanningAttemptDto(a.AttemptNumber, a.Provider, a.Model, a.PromptVersion, a.Status, a.StartedAtUtc, a.CompletedAtUtc, a.FailureCode, a.FailureMessage, a.InputTokenCount, a.OutputTokenCount)).ToList(), r.InfrastructureFailureCode, r.InfrastructureFailureMessage, r.InfrastructureBlockedTaskId, Deserialize(r.PlanningWarningsJson));
+    private static PipelineRunDto Map(PipelineRun r, IReadOnlyList<PlanningAttempt>? attempts = null, IReadOnlyList<ExecutionInvocation>? executionInvocations = null) => new(
+        r.Id, r.ProjectId, r.FeatureRequest, r.Status, r.CreatedAtUtc, r.StartedAtUtc, r.CompletedAtUtc, r.CancelledAtUtc, r.FailureReason, r.StopReason,
+        new(r.LoopRun.Id, r.LoopRun.LoopDefinitionId, r.LoopRun.LoopDefinitionVersion, r.LoopRun.Status, r.LoopRun.CurrentStage, r.LoopRun.MaximumRevisionAttempts, r.LoopRun.ContinueOnTaskFailure, r.LoopRun.RetryCount, r.LoopRun.StartedAtUtc, r.LoopRun.CompletedAtUtc, r.LoopRun.StopReason, r.LoopRun.FailureReason),
+        r.Tasks.Select(t => MapTask(r, t, executionInvocations)).ToList(),
+        (attempts ?? []).Select(a => new PlanningAttemptDto(a.AttemptNumber, a.Provider, a.Model, a.PromptVersion, a.Status, a.StartedAtUtc, a.CompletedAtUtc, a.FailureCode, a.FailureMessage, a.InputTokenCount, a.OutputTokenCount)).ToList(),
+        r.InfrastructureFailureCode, r.InfrastructureFailureMessage, r.InfrastructureBlockedTaskId, Deserialize(r.PlanningWarningsJson));
+
+    private static PlannedTaskDto MapTask(PipelineRun run, PlannedTask task, IReadOnlyList<ExecutionInvocation>? executionInvocations)
+    {
+        var dependencies = DeserializeGuids(task.DependsOnTaskIdsJson);
+        var byTask = run.Deliveries.ToDictionary(x => x.PlannedTaskId);
+        var blockers = dependencies.Where(id => !byTask.TryGetValue(id, out var delivery) || delivery.Status != Domain.Delivery.TaskDeliveryStatus.Merged).ToList();
+        byTask.TryGetValue(task.Id, out var current);
+        var deliveryDto = current is null ? null : new TaskDeliveryDto(current.Id, current.Status, current.BranchName, current.CommitSha, current.PullRequestProvider, current.PullRequestRepository, current.PullRequestNumber, current.PullRequestUrl, current.FailureCode, current.FailureMessage);
+        var eligible = run.Status == PipelineRunStatus.ReadyForDelivery && run.LoopRun.CurrentStage == LoopStage.Committing && task.Status == PlannedTaskStatus.Approved && current is null && blockers.Count == 0;
+        return new(task.Id, task.Sequence, task.Title, task.Description, task.AcceptanceCriteria, task.Status, task.RevisionCount, task.MaximumRevisionAttempts,
+            task.CoderModelOverrideId, task.ReviewerModelOverrideId,
+            task.Attempts.Select(a => MapAttempt(a, executionInvocations)).ToList(),
+            task.ReviewDecisions.Select(x => new ReviewDecisionDto(x.Id, x.TaskAttemptId, x.Decision, x.Provider, x.Model, x.PromptVersion, x.InputTokenCount, x.OutputTokenCount, x.ReviewedPatchSha256, x.Summary, x.Feedback, x.FindingsJson, x.IsCurrent, x.CreatedAtUtc)).ToList(),
+            task.SkipReason, task.FailureReason, dependencies, Deserialize(task.AffectedAreasJson), task.ChangeType, task.Risk, task.ConflictRisk,
+            task.ExecutionReason, Deserialize(task.RepositoryEvidenceJson), task.OriginalPlannerSequence, task.OrderAdjusted, task.OrderAdjustmentReason,
+            task.EstablishesSharedContract, eligible, blockers, deliveryDto);
+    }
+
+    private static TaskAttemptDto MapAttempt(TaskAttempt a, IReadOnlyList<ExecutionInvocation>? executionInvocations) => new(
+        a.Id, a.AttemptNumber, a.AttemptType, a.Status, a.Provider, a.Model, a.PromptVersion, a.InputTokenCount, a.OutputTokenCount, a.ToolStepCount,
+        a.Summary, a.FailureCode, a.FailureReason, Deserialize(a.ChangedFilesJson), a.PatchArtifactReference, a.PatchSha256, Deserialize(a.ValidationSummaryJson),
+        a.StartedAtUtc, a.CompletedAtUtc, (executionInvocations ?? []).Where(i => i.TaskAttemptId == a.Id).Select(MapInvocation).ToList(),
+        a.SourceBaseCommitSha, a.DependencyPatchCount, DeserializeGuids(a.DependencyTaskIdsJson), a.ComposedTreeFingerprint, a.CurrentRevisionPatchApplied,
+        a.IncrementalPatchFileCount, a.CompositionStatus);
+
+    private static ExecutionInvocationDto MapInvocation(ExecutionInvocation i) => new(
+        i.Id, i.Sequence, i.AgentRole, i.Provider, i.Model, i.PromptVersion, i.ProviderRequestId, i.InputTokenCount, i.OutputTokenCount, i.ResponseType,
+        i.ToolStepCount, i.SuccessfulReadCount, i.SuccessfulSearchCount, i.SuccessfulPatchCount, i.FallbackSequence, i.Status, i.FailureCode, i.FailureReason,
+        i.StartedAtUtc, i.CompletedAtUtc, i.ProviderRoundTripCount, i.ConsecutiveReadOnlyRounds, i.MaximumSingleRequestInput, i.ProviderResponseStatus,
+        i.ProviderIncompleteReason, i.StructuredOutputRepairCount, i.NoProgressCorrectionCount, i.PaidProviderRequestCount, i.CurrentPhase, i.RequestedProhibitedTool,
+        i.PatchAttemptCount, i.FailedPatchCount, i.LastPatchFailureCode, i.MaximumRequestedOutputReservation, Deserialize(i.OutputReservationReasonsJson),
+        i.ProviderCapacityWaitMilliseconds, i.ProviderResetUsed, i.LastRateLimitScope);
     private static IReadOnlyList<string> Deserialize(string json)
     {
         try

@@ -12,6 +12,12 @@ Milestone 5.1 enriches Planning with a bounded repository snapshot and a validat
 
 Execution artifacts follow the delivery invariant `one task -> one approved patch -> one future commit -> one future pull request`. A task workspace composes only its approved dependency closure into the Git index, while its working-tree diff remains task-specific. Reviewer input is that incremental patch rather than cumulative feature history. Target commits, branches, pushes, and pull requests remain deferred to Milestone 6.
 
+## Per-task delivery foundation
+
+Milestone 6 introduces one durable `TaskDelivery` per approved task. The pipeline run remains the orchestration boundary and stays `ReadyForDelivery` with the loop at `Committing` while deliveries progress. Dependencies become delivery-eligible only after their delivery is `Merged`; approval alone is insufficient. Target Git and GitHub execution remain deferred.
+
+The invariant is one approved task, one delivery, one future target branch, one future approved commit, and one future focused pull request. A run never owns a branch or pull-request identity.
+
 ## Infrastructure rollback persistence
 
 Task claiming deliberately persists a new `Started` attempt before repository workspace preparation. If preparation fails before composition or provider execution, the aggregate returns the exact transient attempt that it rolled back. The Application layer passes that entity to the repository for an explicit tracked delete, then persists the attempt deletion, task restoration, cleared claim, infrastructure failure, and `WaitingForInfrastructure` transition in one save boundary. The required task-attempt relationship remains `DeleteBehavior.Restrict`; rollback does not depend on cascade deletion or a nullable foreign key.

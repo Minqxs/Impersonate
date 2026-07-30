@@ -1,3 +1,5 @@
+using Impersonate.Domain.Delivery;
+
 namespace Impersonate.Domain.Pipelines;
 
 public sealed class PipelineRun
@@ -5,6 +7,7 @@ public sealed class PipelineRun
     public const int FeatureRequestMaxLength = 4000;
     private readonly List<PlannedTask> tasks = [];
     private readonly List<PipelineRunEvent> events = [];
+    private readonly List<TaskDelivery> deliveries = [];
     private PipelineRun()
     {
     }
@@ -125,6 +128,7 @@ public sealed class PipelineRun
     public LoopRun LoopRun { get; private set; } = null!;
     public IReadOnlyList<PlannedTask> Tasks => tasks.OrderBy(x => x.Sequence).ToList().AsReadOnly();
     public IReadOnlyList<PipelineRunEvent> Events => events.OrderBy(x => x.Sequence).ToList().AsReadOnly();
+    public IReadOnlyList<TaskDelivery> Deliveries => deliveries.OrderBy(x => x.TaskSequence).ToList().AsReadOnly();
 
     public static PipelineRun Create(Guid projectId, string request, int maxRevisions = 3, bool continueOnFailure = true, DateTimeOffset? now = null) => new(projectId, request, maxRevisions, continueOnFailure, now ?? DateTimeOffset.UtcNow);
     public void StartPlanning(DateTimeOffset? at = null)

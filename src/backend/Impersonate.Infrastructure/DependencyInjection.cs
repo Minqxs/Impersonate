@@ -1,4 +1,5 @@
 using Impersonate.Application.Ai;
+using Impersonate.Application.Delivery;
 using Impersonate.Application.Execution;
 using Impersonate.Application.Pipelines;
 using Impersonate.Application.Planning;
@@ -39,6 +40,7 @@ public static class DependencyInjection
             services.AddDbContext<ImpersonateDbContext>(options => options.UseSqlServer(connectionString));
             services.AddScoped<IProjectRepository, EfProjectRepository>();
             services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
+            services.AddScoped<ITaskDeliveryRepository, EfTaskDeliveryRepository>();
             services.AddScoped<IExecutionInvocationStore, EfExecutionInvocationStore>();
             services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
             services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();
