@@ -7,7 +7,9 @@ public sealed class Project
     public const int RepositoryUrlMaxLength = 500;
     public const int DefaultBranchMaxLength = 200;
 
-    private Project() { }
+    private Project()
+    {
+    }
 
     private Project(Guid id, string name, string? description, string repositoryUrl, string defaultBranch, ProjectStatus status, DateTimeOffset now)
     {
@@ -18,14 +20,29 @@ public sealed class Project
         UpdatedAtUtc = now;
     }
 
-    public Guid Id { get; private set; }
+    public Guid Id
+    {
+        get; private set;
+    }
     public string Name { get; private set; } = null!;
-    public string? Description { get; private set; }
+    public string? Description
+    {
+        get; private set;
+    }
     public string RepositoryUrl { get; private set; } = null!;
     public string DefaultBranch { get; private set; } = null!;
-    public ProjectStatus Status { get; private set; }
-    public DateTimeOffset CreatedAtUtc { get; private set; }
-    public DateTimeOffset UpdatedAtUtc { get; private set; }
+    public ProjectStatus Status
+    {
+        get; private set;
+    }
+    public DateTimeOffset CreatedAtUtc
+    {
+        get; private set;
+    }
+    public DateTimeOffset UpdatedAtUtc
+    {
+        get; private set;
+    }
 
     public static Project Create(string name, string? description, string repositoryUrl, string defaultBranch, ProjectStatus status = ProjectStatus.Idle, DateTimeOffset? now = null) =>
         new(Guid.NewGuid(), name, description, repositoryUrl, defaultBranch, status, now ?? DateTimeOffset.UtcNow);
@@ -41,7 +58,8 @@ public sealed class Project
 
     public void ChangeStatus(ProjectStatus status, DateTimeOffset? now = null)
     {
-        if (!Enum.IsDefined(status)) throw new ArgumentOutOfRangeException(nameof(status), "Project status must be defined.");
+        if (!Enum.IsDefined(status))
+            throw new ArgumentOutOfRangeException(nameof(status), "Project status must be defined.");
         Status = status;
         UpdatedAtUtc = now ?? DateTimeOffset.UtcNow;
     }
@@ -49,16 +67,20 @@ public sealed class Project
     private static string Required(string value, string parameterName, int maximumLength)
     {
         var normalized = value?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized)) throw new ArgumentException("Value is required.", parameterName);
-        if (normalized.Length > maximumLength) throw new ArgumentOutOfRangeException(parameterName, $"Value must not exceed {maximumLength} characters.");
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new ArgumentException("Value is required.", parameterName);
+        if (normalized.Length > maximumLength)
+            throw new ArgumentOutOfRangeException(parameterName, $"Value must not exceed {maximumLength} characters.");
         return normalized;
     }
 
     private static string? Optional(string? value, int maximumLength)
     {
         var normalized = value?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized)) return null;
-        if (normalized.Length > maximumLength) throw new ArgumentOutOfRangeException(nameof(value), $"Value must not exceed {maximumLength} characters.");
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+        if (normalized.Length > maximumLength)
+            throw new ArgumentOutOfRangeException(nameof(value), $"Value must not exceed {maximumLength} characters.");
         return normalized;
     }
 

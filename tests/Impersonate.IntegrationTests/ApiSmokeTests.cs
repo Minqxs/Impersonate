@@ -2,15 +2,15 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Impersonate.Application.Projects;
 using Impersonate.Application.Ai;
+using Impersonate.Application.Projects;
 using Impersonate.Domain.Ai;
 using Impersonate.Domain.Projects;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Impersonate.IntegrationTests;
@@ -40,7 +40,10 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
         Assert.Equal(project.Id, (await client.GetFromJsonAsync<ProjectDto>($"/api/projects/{project.Id}", JsonOptions))!.Id);
         var update = await client.PutAsJsonAsync($"/api/projects/{project.Id}", new UpdateProjectRequest("Updated Project", "Details", "https://github.com/example/updated.git", "develop"));
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
-        var status = await client.PatchAsJsonAsync($"/api/projects/{project.Id}/status", new { status = "Active" });
+        var status = await client.PatchAsJsonAsync($"/api/projects/{project.Id}/status", new
+        {
+            status = "Active"
+        });
         Assert.Equal(ProjectStatus.Active, (await status.Content.ReadFromJsonAsync<ProjectDto>(JsonOptions))!.Status);
 
         var filtered = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects?status=Active&search=updated", JsonOptions);
@@ -53,11 +56,11 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
     [Fact]
     public async Task MissingAndValidation_ReturnExpectedResponses()
     {
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/projects/{Guid.NewGuid()}" )).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/projects/{Guid.NewGuid()}")).StatusCode);
         var invalid = await client.PostAsJsonAsync("/api/projects", new CreateProjectRequest("", null, "not-a-url", ""));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(HttpStatusCode.NotFound,(await client.GetAsync($"/api/projects/{Guid.NewGuid()}/ai/readiness")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/projects/{Guid.NewGuid()}/ai/readiness")).StatusCode);
     }
 
     [Fact]
@@ -114,7 +117,13 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
     [Fact]
     public async Task ExecutionReadiness_IsSafeAndStartsSanitizedGit()
     {
-        var json=await client.GetStringAsync("/api/execution/readiness");Assert.Contains("gitVersionSucceeded",json);Assert.Contains("suppliedVariableNames",json);Assert.DoesNotContain("API_KEY",json,StringComparison.OrdinalIgnoreCase);Assert.DoesNotContain("TOKEN",json,StringComparison.OrdinalIgnoreCase);if(OperatingSystem.IsWindows()&&Environment.GetEnvironmentVariable("SystemRoot") is not null)Assert.Contains("SystemRoot",json,StringComparison.OrdinalIgnoreCase);
+        var json = await client.GetStringAsync("/api/execution/readiness");
+        Assert.Contains("gitVersionSucceeded", json);
+        Assert.Contains("suppliedVariableNames", json);
+        Assert.DoesNotContain("API_KEY", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TOKEN", json, StringComparison.OrdinalIgnoreCase);
+        if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("SystemRoot") is not null)
+            Assert.Contains("SystemRoot", json, StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -133,23 +142,34 @@ public sealed class ProjectApiFactory : WebApplicationFactory<Program>
     }
 }
 
-internal sealed class EmptyAiRoutingRepository:IAiRoutingRepository
+internal sealed class EmptyAiRoutingRepository : IAiRoutingRepository
 {
- public Task<IReadOnlyList<AiProviderConnection>> GetConnectionsAsync(CancellationToken ct)=>Task.FromResult<IReadOnlyList<AiProviderConnection>>([]);public Task<AiProviderConnection?> GetConnectionAsync(Guid id,CancellationToken ct)=>Task.FromResult<AiProviderConnection?>(null);public Task<IReadOnlyList<DiscoveredModel>> GetModelsAsync(Guid? id,CancellationToken ct)=>Task.FromResult<IReadOnlyList<DiscoveredModel>>([]);public Task<ProjectAiRoutingPolicy?> GetPolicyAsync(Guid id,CancellationToken ct)=>Task.FromResult<ProjectAiRoutingPolicy?>(null);public Task<ProjectAiRoutingPolicy> GetOrCreatePolicyAsync(Guid id,CancellationToken ct)=>Task.FromResult(ProjectAiRoutingPolicy.Create(id));public Task<ModelSelectionDecision?> GetDecisionAsync(Guid project,Guid run,CancellationToken ct)=>Task.FromResult<ModelSelectionDecision?>(null);public Task AddConnectionAsync(AiProviderConnection x,CancellationToken ct)=>Task.CompletedTask;public Task AddModelAsync(DiscoveredModel x,CancellationToken ct)=>Task.CompletedTask;public Task RemoveConnectionAsync(AiProviderConnection x,CancellationToken ct)=>Task.CompletedTask;public Task AddDecisionAsync(ModelSelectionDecision x,CancellationToken ct)=>Task.CompletedTask;public Task SaveChangesAsync(CancellationToken ct)=>Task.CompletedTask;
+    public Task<IReadOnlyList<AiProviderConnection>> GetConnectionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<AiProviderConnection>>([]); public Task<AiProviderConnection?> GetConnectionAsync(Guid id, CancellationToken ct) => Task.FromResult<AiProviderConnection?>(null); public Task<IReadOnlyList<DiscoveredModel>> GetModelsAsync(Guid? id, CancellationToken ct) => Task.FromResult<IReadOnlyList<DiscoveredModel>>([]); public Task<ProjectAiRoutingPolicy?> GetPolicyAsync(Guid id, CancellationToken ct) => Task.FromResult<ProjectAiRoutingPolicy?>(null); public Task<ProjectAiRoutingPolicy> GetOrCreatePolicyAsync(Guid id, CancellationToken ct) => Task.FromResult(ProjectAiRoutingPolicy.Create(id)); public Task<ModelSelectionDecision?> GetDecisionAsync(Guid project, Guid run, CancellationToken ct) => Task.FromResult<ModelSelectionDecision?>(null); public Task AddConnectionAsync(AiProviderConnection x, CancellationToken ct) => Task.CompletedTask; public Task AddModelAsync(DiscoveredModel x, CancellationToken ct) => Task.CompletedTask; public Task RemoveConnectionAsync(AiProviderConnection x, CancellationToken ct) => Task.CompletedTask; public Task AddDecisionAsync(ModelSelectionDecision x, CancellationToken ct) => Task.CompletedTask; public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
 }
 
 internal sealed class InMemoryProjectRepository : IProjectRepository
 {
     private readonly List<Project> projects = [];
-    public Task AddAsync(Project project, CancellationToken cancellationToken) { lock (projects) projects.Add(project); return Task.CompletedTask; }
-    public Task<Project?> GetAsync(Guid id, CancellationToken cancellationToken) { lock (projects) return Task.FromResult(projects.SingleOrDefault(x => x.Id == id)); }
+    public Task AddAsync(Project project, CancellationToken cancellationToken)
+    {
+        lock (projects)
+            projects.Add(project);
+        return Task.CompletedTask;
+    }
+    public Task<Project?> GetAsync(Guid id, CancellationToken cancellationToken)
+    {
+        lock (projects)
+            return Task.FromResult(projects.SingleOrDefault(x => x.Id == id));
+    }
     public Task<IReadOnlyList<Project>> ListAsync(ProjectStatus? status, string? search, CancellationToken cancellationToken)
     {
         lock (projects)
         {
             IEnumerable<Project> query = projects.ToList();
-            if (status is not null) query = query.Where(x => x.Status == status);
-            if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => x.Name.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (status is not null)
+                query = query.Where(x => x.Status == status);
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(x => x.Name.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
             return Task.FromResult<IReadOnlyList<Project>>(query.OrderBy(x => x.Status).ThenBy(x => x.Name).ToList());
         }
     }

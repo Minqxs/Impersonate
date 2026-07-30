@@ -1,18 +1,109 @@
 using System.Text.Json;
 using Impersonate.Domain.Ai;
 namespace Impersonate.Application.Ai;
-internal sealed class AiProviderConnectionService(IAiRoutingRepository repository,IProviderCredentialStore credentials,IEnumerable<IAiProviderAdapter> adapters):IAiProviderConnectionService
+
+internal sealed class AiProviderConnectionService(IAiRoutingRepository repository, IProviderCredentialStore credentials, IEnumerable<IAiProviderAdapter> adapters) : IAiProviderConnectionService
 {
- public async Task<IReadOnlyList<ProviderConnectionDto>> ListAsync(CancellationToken ct)=>(await repository.GetConnectionsAsync(ct)).Select(Map).ToList();
- public async Task<ProviderConnectionDto> CreateAsync(ProviderType type,CreateProviderConnectionRequest request,CancellationToken ct){RequireKey(request.ApiKey);if((await repository.GetConnectionsAsync(ct)).Any(x=>x.ProviderType==type))throw new InvalidOperationException($"An {type} connection already exists. Replace its credentials instead.");var connection=AiProviderConnection.Create(type,request.DisplayName);await repository.AddConnectionAsync(connection,ct);await credentials.StoreAsync(connection.Id,new(request.ApiKey.Trim(),request.Organisation,request.Project),ct);await repository.SaveChangesAsync(ct);return Map(connection);}
- public async Task<ProviderConnectionDto?> ReplaceCredentialsAsync(Guid id,ReplaceProviderCredentialRequest request,CancellationToken ct){RequireKey(request.ApiKey);var connection=await repository.GetConnectionAsync(id,ct);if(connection is null)return null;await credentials.StoreAsync(id,new(request.ApiKey.Trim(),request.Organisation,request.Project),ct);connection.CredentialsReplaced();await repository.SaveChangesAsync(ct);return Map(connection);}
- public async Task<ProviderConnectionDto?> ValidateAsync(Guid id,CancellationToken ct){var connection=await repository.GetConnectionAsync(id,ct);if(connection is null)return null;var read=await credentials.RetrieveAsync(id,ct);if(read.Status!=ProviderCredentialReadStatus.Found){connection.ValidationFailed(false,read.SafeFailureCode!,read.SafeFailureMessage!);await repository.SaveChangesAsync(ct);return Map(connection);}var result=await Adapter(connection.ProviderType).ValidateAsync(new(id,connection.ProviderType,read.Credential!),ct);if(result.Succeeded)connection.Connected();else connection.ValidationFailed(result.InvalidCredentials,result.FailureCode??"provider_unavailable",result.SafeMessage);await repository.SaveChangesAsync(ct);return Map(connection);}
- public async Task<ProviderConnectionDto?> SynchroniseAsync(Guid id,CancellationToken ct){var connection=await repository.GetConnectionAsync(id,ct);if(connection is null)return null;if(connection.Status!=ProviderConnectionStatus.Connected)throw new InvalidOperationException("Only connected providers can synchronise models.");var read=await credentials.RetrieveAsync(id,ct);if(read.Status!=ProviderCredentialReadStatus.Found)throw new ProviderCredentialUnavailableException(read.SafeFailureCode!,read.SafeFailureMessage!);var discovered=await Adapter(connection.ProviderType).DiscoverModelsAsync(new(id,connection.ProviderType,read.Credential!),ct);var existing=(await repository.GetModelsAsync(id,ct)).ToDictionary(x=>x.ProviderModelId,StringComparer.Ordinal);foreach(var item in existing.Values)item.MarkUnavailable();foreach(var item in discovered.GroupBy(x=>x.Id,StringComparer.Ordinal).Select(x=>x.First())){var capabilities=JsonSerializer.Serialize((int)item.Capabilities);if(existing.TryGetValue(item.Id,out var model))model.Refresh(item.Name,item.Description,item.Lifecycle,item.CapabilitySource,capabilities,item.ContextWindow,item.MaximumOutput);else await repository.AddModelAsync(DiscoveredModel.Create(id,connection.ProviderType,item.Id,item.Name,item.Description,item.Lifecycle,item.CapabilitySource,capabilities,item.ContextWindow,item.MaximumOutput),ct);}connection.Synchronised();await repository.SaveChangesAsync(ct);return Map(connection);}
- public async Task<IReadOnlyList<DiscoveredModelDto>?> ModelsAsync(Guid id,CancellationToken ct){if(await repository.GetConnectionAsync(id,ct) is null)return null;return (await repository.GetModelsAsync(id,ct)).Select(Map).ToList();}
- public async Task<bool> DisableAsync(Guid id,CancellationToken ct){var connection=await repository.GetConnectionAsync(id,ct);if(connection is null)return false;connection.Disable();await repository.SaveChangesAsync(ct);return true;}
- public async Task<bool> RemoveAsync(Guid id,CancellationToken ct){var connection=await repository.GetConnectionAsync(id,ct);if(connection is null)return false;await credentials.DeleteAsync(id,ct);connection.Disable();await repository.SaveChangesAsync(ct);return true;}
- private IAiProviderAdapter Adapter(ProviderType type)=>adapters.Single(x=>x.ProviderType==type);
- private static void RequireKey(string key){if(string.IsNullOrWhiteSpace(key))throw new ArgumentException("API key is required.",nameof(key));}
- private static ProviderConnectionDto Map(AiProviderConnection x)=>new(x.Id,x.ProviderType,x.DisplayName,x.Status,x.LastValidatedAtUtc,x.LastModelSyncAtUtc,x.Models.Count(m=>m.IsAvailable),x.LastFailureCode,x.LastSafeFailureMessage);
- private static DiscoveredModelDto Map(DiscoveredModel x)=>new(x.Id,x.ProviderConnectionId,x.ProviderType,x.ProviderModelId,x.DisplayName,x.Description,x.LifecycleStatus,x.IsAvailable,x.ContextWindowSize,x.MaximumOutputSize);
+    public async Task<IReadOnlyList<ProviderConnectionDto>> ListAsync(CancellationToken ct) => (await repository.GetConnectionsAsync(ct)).Select(Map).ToList();
+    public async Task<ProviderConnectionDto> CreateAsync(ProviderType type, CreateProviderConnectionRequest request, CancellationToken ct)
+    {
+        RequireKey(request.ApiKey);
+        if ((await repository.GetConnectionsAsync(ct)).Any(x => x.ProviderType == type))
+            throw new InvalidOperationException($"An {type} connection already exists. Replace its credentials instead.");
+        var connection = AiProviderConnection.Create(type, request.DisplayName);
+        await repository.AddConnectionAsync(connection, ct);
+        await credentials.StoreAsync(connection.Id, new(request.ApiKey.Trim(), request.Organisation, request.Project), ct);
+        await repository.SaveChangesAsync(ct);
+        return Map(connection);
+    }
+    public async Task<ProviderConnectionDto?> ReplaceCredentialsAsync(Guid id, ReplaceProviderCredentialRequest request, CancellationToken ct)
+    {
+        RequireKey(request.ApiKey);
+        var connection = await repository.GetConnectionAsync(id, ct);
+        if (connection is null)
+            return null;
+        await credentials.StoreAsync(id, new(request.ApiKey.Trim(), request.Organisation, request.Project), ct);
+        connection.CredentialsReplaced();
+        await repository.SaveChangesAsync(ct);
+        return Map(connection);
+    }
+    public async Task<ProviderConnectionDto?> ValidateAsync(Guid id, CancellationToken ct)
+    {
+        var connection = await repository.GetConnectionAsync(id, ct);
+        if (connection is null)
+            return null;
+        var read = await credentials.RetrieveAsync(id, ct);
+        if (read.Status != ProviderCredentialReadStatus.Found)
+        {
+            connection.ValidationFailed(false, read.SafeFailureCode!, read.SafeFailureMessage!);
+            await repository.SaveChangesAsync(ct);
+            return Map(connection);
+        }
+        var result = await Adapter(connection.ProviderType).ValidateAsync(new(id, connection.ProviderType, read.Credential!), ct);
+        if (result.Succeeded)
+            connection.Connected();
+        else
+            connection.ValidationFailed(result.InvalidCredentials, result.FailureCode ?? "provider_unavailable", result.SafeMessage);
+        await repository.SaveChangesAsync(ct);
+        return Map(connection);
+    }
+    public async Task<ProviderConnectionDto?> SynchroniseAsync(Guid id, CancellationToken ct)
+    {
+        var connection = await repository.GetConnectionAsync(id, ct);
+        if (connection is null)
+            return null;
+        if (connection.Status != ProviderConnectionStatus.Connected)
+            throw new InvalidOperationException("Only connected providers can synchronise models.");
+        var read = await credentials.RetrieveAsync(id, ct);
+        if (read.Status != ProviderCredentialReadStatus.Found)
+            throw new ProviderCredentialUnavailableException(read.SafeFailureCode!, read.SafeFailureMessage!);
+        var discovered = await Adapter(connection.ProviderType).DiscoverModelsAsync(new(id, connection.ProviderType, read.Credential!), ct);
+        var existing = (await repository.GetModelsAsync(id, ct)).ToDictionary(x => x.ProviderModelId, StringComparer.Ordinal);
+        foreach (var item in existing.Values)
+            item.MarkUnavailable();
+        foreach (var item in discovered.GroupBy(x => x.Id, StringComparer.Ordinal).Select(x => x.First()))
+        {
+            var capabilities = JsonSerializer.Serialize((int)item.Capabilities);
+            if (existing.TryGetValue(item.Id, out var model))
+                model.Refresh(item.Name, item.Description, item.Lifecycle, item.CapabilitySource, capabilities, item.ContextWindow, item.MaximumOutput);
+            else
+                await repository.AddModelAsync(DiscoveredModel.Create(id, connection.ProviderType, item.Id, item.Name, item.Description, item.Lifecycle, item.CapabilitySource, capabilities, item.ContextWindow, item.MaximumOutput), ct);
+        }
+        connection.Synchronised();
+        await repository.SaveChangesAsync(ct);
+        return Map(connection);
+    }
+    public async Task<IReadOnlyList<DiscoveredModelDto>?> ModelsAsync(Guid id, CancellationToken ct)
+    {
+        if (await repository.GetConnectionAsync(id, ct) is null)
+            return null;
+        return (await repository.GetModelsAsync(id, ct)).Select(Map).ToList();
+    }
+    public async Task<bool> DisableAsync(Guid id, CancellationToken ct)
+    {
+        var connection = await repository.GetConnectionAsync(id, ct);
+        if (connection is null)
+            return false;
+        connection.Disable();
+        await repository.SaveChangesAsync(ct);
+        return true;
+    }
+    public async Task<bool> RemoveAsync(Guid id, CancellationToken ct)
+    {
+        var connection = await repository.GetConnectionAsync(id, ct);
+        if (connection is null)
+            return false;
+        await credentials.DeleteAsync(id, ct);
+        connection.Disable();
+        await repository.SaveChangesAsync(ct);
+        return true;
+    }
+    private IAiProviderAdapter Adapter(ProviderType type) => adapters.Single(x => x.ProviderType == type);
+    private static void RequireKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException("API key is required.", nameof(key));
+    }
+    private static ProviderConnectionDto Map(AiProviderConnection x) => new(x.Id, x.ProviderType, x.DisplayName, x.Status, x.LastValidatedAtUtc, x.LastModelSyncAtUtc, x.Models.Count(m => m.IsAvailable), x.LastFailureCode, x.LastSafeFailureMessage);
+    private static DiscoveredModelDto Map(DiscoveredModel x) => new(x.Id, x.ProviderConnectionId, x.ProviderType, x.ProviderModelId, x.DisplayName, x.Description, x.LifecycleStatus, x.IsAvailable, x.ContextWindowSize, x.MaximumOutputSize);
 }

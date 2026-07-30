@@ -80,27 +80,43 @@ public sealed class ProviderConnectionServiceTests
     {
         public List<AiProviderConnection> Connections { get; } = [.. connections];
         public IReadOnlyList<AiProviderConnection> CommittedConnections { get; private set; } = [.. connections];
-        public int SaveCount { get; private set; }
+        public int SaveCount
+        {
+            get; private set;
+        }
         public Task<IReadOnlyList<AiProviderConnection>> GetConnectionsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<AiProviderConnection>>(Connections);
         public Task<AiProviderConnection?> GetConnectionAsync(Guid id, CancellationToken ct) => Task.FromResult(Connections.FirstOrDefault(x => x.Id == id));
         public Task<IReadOnlyList<DiscoveredModel>> GetModelsAsync(Guid? id, CancellationToken ct) => Task.FromResult<IReadOnlyList<DiscoveredModel>>([]);
         public Task<ProjectAiRoutingPolicy?> GetPolicyAsync(Guid id, CancellationToken ct) => Task.FromResult<ProjectAiRoutingPolicy?>(null);
         public Task<ModelSelectionDecision?> GetDecisionAsync(Guid project, Guid run, CancellationToken ct) => Task.FromResult<ModelSelectionDecision?>(null);
-        public Task AddConnectionAsync(AiProviderConnection connection, CancellationToken ct) { Connections.Add(connection); return Task.CompletedTask; }
+        public Task AddConnectionAsync(AiProviderConnection connection, CancellationToken ct)
+        {
+            Connections.Add(connection);
+            return Task.CompletedTask;
+        }
         public Task AddModelAsync(DiscoveredModel model, CancellationToken ct) => Task.CompletedTask;
         public Task RemoveConnectionAsync(AiProviderConnection connection, CancellationToken ct) => Task.CompletedTask;
         public Task<ProjectAiRoutingPolicy> GetOrCreatePolicyAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task AddDecisionAsync(ModelSelectionDecision decision, CancellationToken ct) => Task.CompletedTask;
-        public Task SaveChangesAsync(CancellationToken ct) { SaveCount++; CommittedConnections = [.. Connections]; return Task.CompletedTask; }
+        public Task SaveChangesAsync(CancellationToken ct)
+        {
+            SaveCount++;
+            CommittedConnections = [.. Connections];
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeCredentialStore : IProviderCredentialStore
     {
         public Dictionary<Guid, ProviderCredential> Values { get; } = [];
-        public bool FailStore { get; init; }
+        public bool FailStore
+        {
+            get; init;
+        }
         public Task StoreAsync(Guid id, ProviderCredential credential, CancellationToken ct)
         {
-            if (FailStore) throw new ProviderCredentialStorageException();
+            if (FailStore)
+                throw new ProviderCredentialStorageException();
             Values[id] = credential;
             return Task.CompletedTask;
         }
@@ -108,7 +124,11 @@ public sealed class ProviderConnectionServiceTests
             Values.TryGetValue(id, out var value)
                 ? new ProviderCredentialReadResult(ProviderCredentialReadStatus.Found, value, null, null)
                 : new ProviderCredentialReadResult(ProviderCredentialReadStatus.Missing, null, "credentials_missing", "Credential is missing."));
-        public Task DeleteAsync(Guid id, CancellationToken ct) { Values.Remove(id); return Task.CompletedTask; }
+        public Task DeleteAsync(Guid id, CancellationToken ct)
+        {
+            Values.Remove(id);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeAdapter : IAiProviderAdapter

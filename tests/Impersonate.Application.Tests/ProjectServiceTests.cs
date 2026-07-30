@@ -62,13 +62,19 @@ public sealed class ProjectServiceTests
     private sealed class FakeProjectRepository : IProjectRepository
     {
         public List<Project> Projects { get; } = [];
-        public Task AddAsync(Project project, CancellationToken cancellationToken) { Projects.Add(project); return Task.CompletedTask; }
+        public Task AddAsync(Project project, CancellationToken cancellationToken)
+        {
+            Projects.Add(project);
+            return Task.CompletedTask;
+        }
         public Task<Project?> GetAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(Projects.SingleOrDefault(x => x.Id == id));
         public Task<IReadOnlyList<Project>> ListAsync(ProjectStatus? status, string? search, CancellationToken cancellationToken)
         {
             IEnumerable<Project> query = Projects;
-            if (status is not null) query = query.Where(x => x.Status == status);
-            if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => x.Name.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (status is not null)
+                query = query.Where(x => x.Status == status);
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(x => x.Name.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
             return Task.FromResult<IReadOnlyList<Project>>(query.OrderBy(x => x.Status).ThenBy(x => x.Name).ToList());
         }
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;

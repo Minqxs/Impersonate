@@ -50,7 +50,11 @@ public sealed class PlannerEvidenceRecoveryTests
             var raw = responses[index];
             var sanitized = PlannerEvidenceSanitizer.Sanitize(raw, allowed);
             var errors = PlannerPlanValidator.Analyze(sanitized.Plan, 12, allowed).Concat(sanitized.UnsupportedEvidence).ToList();
-            if (errors.Count == 0) { accepted = sanitized.Plan; break; }
+            if (errors.Count == 0)
+            {
+                accepted = sanitized.Plan;
+                break;
+            }
             if (index == responses.Count - 1 && PlannerEvidenceSanitizer.OnlyEvidenceErrors(errors))
             {
                 run.RecordPlanningWarning("Some repository evidence proposed by the Planner was discarded because it was not present in the bounded snapshot.");
@@ -59,7 +63,8 @@ public sealed class PlannerEvidenceRecoveryTests
             }
             invalid.Add(errors);
             var correction = PlannerEvidenceSanitizer.BuildCorrection(errors, raw, allowed);
-            if (index + 1 < responses.Count) corrections.Add(correction);
+            if (index + 1 < responses.Count)
+                corrections.Add(correction);
         }
         Assert.NotNull(accepted);
         foreach (var candidate in accepted!.Tasks)
