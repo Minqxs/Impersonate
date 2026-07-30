@@ -12,5 +12,6 @@ public interface IPipelineRunRepository
     Task<IReadOnlyList<PlanningAttempt>> GetPlanningAttemptsAsync(Guid runId, CancellationToken ct);
     Task<IReadOnlyList<PipelineRun>> ListAsync(Guid projectId, PipelineRunStatus? status, DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct);
     Task DeleteAsync(Guid projectId, Guid runId, CancellationToken ct);
+    void RemoveTransientAttempt(TaskAttempt attempt);
     Task SaveChangesAsync(CancellationToken ct);
 }

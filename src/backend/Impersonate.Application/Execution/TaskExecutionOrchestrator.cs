@@ -4,11 +4,12 @@ using Impersonate.Application.Pipelines;
 using Impersonate.Application.Projects;
 using Impersonate.Domain.Ai;
 using Impersonate.Domain.Pipelines;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Impersonate.Application.Execution;
 
-internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IProjectRepository projects, IModelRouter router, IAiRoutingRepository ai, IRepositoryWorkspaceService workspaces, IRepositoryTools tools, IExecutionArtifactStore artifacts, IExecutionInvocationStore invocations, ICoderAgent coder, IReviewerAgent reviewer, IModelIdentityClassifier identities, IOptions<ExecutionOptions> options) : ITaskExecutionOrchestrator
+internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IProjectRepository projects, IModelRouter router, IAiRoutingRepository ai, IRepositoryWorkspaceService workspaces, IRepositoryTools tools, IExecutionArtifactStore artifacts, IExecutionInvocationStore invocations, ICoderAgent coder, IReviewerAgent reviewer, IModelIdentityClassifier identities, IOptions<ExecutionOptions> options, ILogger<TaskExecutionOrchestrator> logger) : ITaskExecutionOrchestrator
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -28,8 +29,7 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
         var dependencyResult = ApprovedDependencyClosure(run.Tasks, task);
         if (!dependencyResult.Succeeded)
         {
-            run.BlockForInfrastructure(task, dependencyResult.FailureCode!, dependencyResult.FailureMessage!);
-            await runs.SaveChangesAsync(ct);
+            await BlockForInfrastructure(run, task, dependencyResult.FailureCode!, dependencyResult.FailureMessage!, ct);
             return true;
         }
 
@@ -39,8 +39,7 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
         var prepared = await workspaces.PrepareAsync(new(run.ProjectId, run.Id, task.Id, attempt.AttemptNumber, project.RepositoryUrl, project.DefaultBranch, priorPatches, currentPatch), ct);
         if (!prepared.Succeeded)
         {
-            run.BlockForInfrastructure(task, prepared.FailureCode!, prepared.FailureMessage!);
-            await runs.SaveChangesAsync(ct);
+            await BlockForInfrastructure(run, task, prepared.FailureCode!, prepared.FailureMessage!, ct);
             return true;
         }
 
@@ -157,6 +156,23 @@ internal sealed class TaskExecutionOrchestrator(IPipelineRunRepository runs, IPr
             run.ClearExecutionClaim();
         await runs.SaveChangesAsync(ct);
         return true;
+    }
+
+    private async Task BlockForInfrastructure(PipelineRun run, PlannedTask task, string failureCode, string failureMessage, CancellationToken ct)
+    {
+        var rollback = run.BlockForInfrastructure(task, failureCode, failureMessage);
+        runs.RemoveTransientAttempt(rollback.TransientAttempt);
+        try
+        {
+            await runs.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new TaskExecutionPersistenceException(run.Id, task.Id, ex.GetType().Name);
+        }
+        logger.LogWarning(
+            "Infrastructure rollback persisted for pipeline {PipelineRunId}, task {PlannedTaskId} sequence {TaskSequence}, transient attempt {TaskAttemptId} number {AttemptNumber} type {AttemptType}; failure {FailureCode}, run status {RunStatus}.",
+            run.Id, rollback.PlannedTaskId, rollback.TaskSequence, rollback.AttemptId, rollback.AttemptNumber, rollback.AttemptType, failureCode, run.Status);
     }
 
     private async Task<ModelSelectionResult> Select(PipelineRun run, PlannedTask task, TaskAttempt attempt, AgentRole role, Guid? overrideId, IReadOnlySet<Guid> excluded, CancellationToken ct, RoutingModelIdentity? selectedCoderIdentity = null)

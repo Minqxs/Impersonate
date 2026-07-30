@@ -21,6 +21,13 @@ public sealed class TaskExecutionWorker(IServiceScopeFactory scopes, IExecutionE
                     await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (TaskExecutionPersistenceException ex)
+            {
+                logger.LogError(
+                    "Task execution polling cycle failed for pipeline {PipelineRunId} and task {PlannedTaskId} during persistence ({ExceptionType}).",
+                    ex.PipelineRunId, ex.PlannedTaskId, ex.ExceptionType);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
             catch (Exception ex) { logger.LogError(ex, "Task execution polling cycle failed."); await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
         }
     }

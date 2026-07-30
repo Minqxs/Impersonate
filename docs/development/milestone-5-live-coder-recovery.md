@@ -48,7 +48,7 @@ This document is the durable controller for the focused recovery sequence. A pha
 
 ## Phase 5 — End-to-end live acceptance
 
-- Status: Live acceptance, local validation, and independent review complete; PR pending
+- Status: Complete and merged in PR #38
 - Branch: `docs/milestone-5-live-coder-acceptance`
 - Free acceptance: In a detached disposable worktree, `dotnet restore`, `dotnet format`, `dotnet format --verify-no-changes`, `dotnet build --no-restore`, `dotnet test --no-build`, and `git diff --check` completed successfully. Build had zero warnings; 34 Domain, 67 Application, 71 Integration, and 7 Architecture tests passed. The formatter normalized the repository's pre-existing line-ending mismatch only in that disposable worktree. Frontend `npm install`, lint, 18 tests, and production build passed; the existing 639.48 kB chunk warning and dependency audit findings remain non-blocking.
 - Native Coder repeat: The first accepted task ran directly through the native Coder protocol in its isolated clone with `gpt-5.6-terra`: response `resp_05f7bc237eef4913006a6b3e959b248191b6181ebbada68842`, 9 provider rounds, 8 native repository tool steps, 4 successful reads, 1 successful patch, 1 successful focused build, native `complete_task`, zero structured-output repairs, and persisted patch SHA-256 `6ffefad06f01c6ec947ca32293667434f7d8d7d45f04953dafdf402c629249f9`. No textual tool envelope was used.
@@ -57,4 +57,10 @@ This document is the durable controller for the focused recovery sequence. A pha
 - Task 2: `39a4559b-0e67-4b1b-a4e5-ed5855cd56b2`; attempt `3d004988-3d17-4efa-b53f-f7143e3620e7`; its composed workspace recorded Task 1 as one dependency patch, while its incremental artifact changed only `backend/src/HomeTaskSA.Application/DTOs/UserEmailSummaryDto.cs`; response `resp_045b1b1dadd0b9eb006a6b3ebf2a20819cb8f0716f470d6250`; 10 native tool steps; zero structured-output repairs; patch SHA-256 `4d29cd16fa1d8276b30244702b25067519faa1a2ac198590efc51912a0f9ec5d`; review `f9dc43c3-5329-4c77-b716-e15dc5232a1e` approved.
 - Final state: both tasks are `Approved`; pipeline is `ReadyForDelivery`; loop stage is `Committing`. The application intentionally stopped before target delivery. The original TaskIt checkout stayed clean on `main` at `0615e159f06d61c5c398fa5dd0d06591d985ea16`; no target commit, branch, push, or PR was created.
 - Independent review: fresh-context review verified the docs-only scope, merge history, runtime identifiers and hashes, native-tool telemetry contracts, dependency-patch composition, final pipeline state, and the clean unchanged TaskIt checkout; no blockers remained.
-- Remaining blockers: one documentation commit; CI; PR merge; final post-merge free acceptance on latest `main`.
+- Remaining blockers: None.
+
+## Post-acceptance hardening addendum
+
+After acceptance was complete, an execution-infrastructure failure exposed an EF persistence defect: claim persistence made the new attempt durable, while aggregate rollback only removed it from the navigation collection. With the required foreign key and `DeleteBehavior.Restrict`, the later save failed on a conceptual null. This is a post-acceptance recovery defect and does not invalidate or reopen the successful live evidence from run `3e4b1e11-d8a3-464b-913e-341f77697cca`: both real incremental patches and both approvals remain accepted, with the pipeline `ReadyForDelivery` and loop at `Committing`.
+
+The hardening fix makes the rollback result explicit and deletes only the exact unstarted transient attempt in the same unit of work that records `WaitingForInfrastructure`. Regression coverage proves initial and revision restoration, retry numbering, worker continuation to another run, and exclusion of `ReadyForDelivery` runs from execution claims. Milestone 6 remains unstarted.
