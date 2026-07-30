@@ -26,19 +26,24 @@ This document is the durable controller for the focused recovery sequence. A pha
 
 ## Phase 3 — Model ranking and Reviewer diversity
 
-- Status: Implementation, deterministic validation, and independent review complete; PR pending
+- Status: Merged
 - Branch: `fix/model-ranking-reviewer-diversity`
 - PR: #35
 - Root cause: catalogue v2 derived identical generic tiers from broad variant labels, so older general and coding-specialised models tied. Reviewer scoring attempted to reconstruct Coder family from failure history rather than using the actual selected Coder identity.
 - Deterministic evidence: reviewed catalogue v3 records provider, generation, specialization, endpoint, role strengths, repository-tool reliability, cost/latency, reviewed date, source category, and limitations. Quality Coder routing selects GPT-5-Codex over GPT-4.1; Balanced/Economy select GPT-5 mini above the hard floor; only component-wise genuine ties reach provider/model/discovered-ID stability ordering. Reviewer diversity is zero for the same model, aliases/dated snapshots, same family across providers, and missing Coder identity, and positive only for materially different canonical families. API and Worker Release builds pass with zero warnings; 34 Domain, 67 Application, 63 Integration, and 7 Architecture tests pass; frontend lint, 18 tests, and production build pass; `git diff --check` passes.
 - Independent review: found and fixed aggregate-score false ties, missing discovered-ID stability, imprecise reconstructed Coder identity, cross-provider same-family diversity, a stale catalogue-version explanation, inconsistent meaningful-component ordering, and an equal-score explanation that omitted its actual deciding component.
 - Documentation evidence: official OpenAI GPT-4.1, GPT-5, GPT-5-Codex, and current model guidance reviewed on 2026-07-30.
-- Remaining blockers: one implementation commit; CI; PR merge.
+- Remaining blockers: None.
 
 ## Phase 4 — Adaptive provider output reservation
 
-- Status: Pending Phase 3 merge
+- Status: Implementation, deterministic validation, database update, and independent review complete; PR pending
 - Branch: `fix/adaptive-provider-output-reservation`
+- PR: #36
+- Root cause: every native Coder provider turn reserved the model/default maximum (commonly 16,000 tokens), even for small discovery, validation, and completion calls, unnecessarily increasing TPM pressure.
+- Deterministic evidence: per-turn reservations incorporate provider endpoint, model ceiling, estimated diff size, execution phase, patch state, pending native-tool payload size, prior actual output, truncation, provider resets, rate-limit scope, and reported remaining token capacity. Discovery starts at 1,200 Responses tokens; implementation scales from expected diff; validation/completion shrink; truncation grows safely; every reservation is capped at model support. No cumulative task budget or patch deadline exists. Successful and terminal-failure telemetry records reservation reasons, provider capacity wait/reset/scope, and actual usage. Additive migration `20260730111526_AddAdaptiveOutputReservationTelemetry` was applied to the configured local database; EF reports no pending model changes. API and Worker Release builds pass with zero warnings; 34 Domain, 67 Application, 71 Integration, and 7 Architecture tests pass; frontend lint, 18 tests, and production build pass.
+- Independent review: found and fixed missing tool-payload/capacity adaptation, lost terminal-failure telemetry (including usage accumulated before a terminal 429), and insufficient integration coverage. Final re-review passed with no blockers.
+- Remaining blockers: one implementation commit; CI; PR merge.
 
 ## Phase 5 — End-to-end live acceptance
 

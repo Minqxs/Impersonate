@@ -15,4 +15,6 @@ public sealed record AgentTurnResponse(
     int RateLimitRetryCount = 0,
     long CumulativeRateLimitWaitMilliseconds = 0,
     RateLimitScope? LastRateLimitScope = null,
-    bool ProviderResetUsed = false);
+    bool ProviderResetUsed = false,
+    long? ProviderRemainingTokens = null,
+    long? ProviderTokenLimit = null);

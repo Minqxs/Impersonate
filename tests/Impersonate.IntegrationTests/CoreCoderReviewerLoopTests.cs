@@ -12,6 +12,45 @@ namespace Impersonate.IntegrationTests;
 public sealed class CoreCoderReviewerLoopTests
 {
     [Fact]
+    public async Task Coder_sends_phase_appropriate_reservations_and_returns_telemetry()
+    {
+        var run = ExecutableRun(0);
+        var task = run.ClaimNextTask(Guid.NewGuid(), "worker", DateTimeOffset.UtcNow.AddMinutes(1));
+        var tools = new LoopTools();
+        var fixture = CoderWithAdapter(tools);
+        var result = await fixture.Agent.ExecuteAsync(Context(run, task, null), default);
+
+        Assert.True(result.Succeeded, result.FailureMessage);
+        var reservations = fixture.Adapter.Requests.Select(x => x.MaximumOutputTokens).ToArray();
+        Assert.Equal(1_200, reservations[0]);
+        Assert.True(reservations[1] >= 3_000);
+        Assert.True(reservations[2] < reservations[1]);
+        Assert.True(reservations[3] <= reservations[2]);
+        Assert.Equal(reservations.Max(), result.MaximumRequestedOutputReservation);
+        Assert.Equal(4, result.OutputReservationReasons!.Count);
+        Assert.Equal(20, result.OutputTokenCount);
+    }
+
+    [Fact]
+    public async Task Terminal_rate_limit_preserves_prior_usage_and_capacity_telemetry()
+    {
+        var run = ExecutableRun(0);
+        var task = run.ClaimNextTask(Guid.NewGuid(), "worker", DateTimeOffset.UtcNow.AddMinutes(1));
+        var agent = new CoderAgent([new RateLimitAfterReadAdapter()], new Credentials(), new LoopTools(), Options.Create(new ExecutionOptions { DefaultModelContextWindowTokens = 32_000 }));
+        var result = await agent.ExecuteAsync(Context(run, task, null), default);
+        Assert.False(result.Succeeded);
+        Assert.Equal("provider_rate_limited", result.FailureCode);
+        Assert.Equal(10, result.InputTokenCount);
+        Assert.Equal(5, result.OutputTokenCount);
+        Assert.Equal(1, result.ProviderRoundTripCount);
+        Assert.Equal(1, result.PaidProviderRequestCount);
+        Assert.Equal(1, result.ToolStepCount);
+        Assert.Equal(250, result.ProviderCapacityWaitMilliseconds);
+        Assert.True(result.ProviderResetUsed);
+        Assert.Equal("Tokens", result.LastRateLimitScope);
+    }
+
+    [Fact]
     public async Task Fake_provider_changes_request_creates_finite_revision_then_approval()
     {
         var run = ExecutableRun(maximumRevisions: 1);
@@ -83,7 +122,12 @@ public sealed class CoreCoderReviewerLoopTests
         run.StartExecution();
         return run;
     }
-    private static CoderAgent Coder(LoopTools tools) => new([new SequenceAdapter(CoderResponses())], new Credentials(), tools, Options.Create(new ExecutionOptions { MaximumCoderToolExecutions = 5, DefaultModelContextWindowTokens = 4000 }));
+    private static CoderAgent Coder(LoopTools tools) => CoderWithAdapter(tools).Agent;
+    private static (CoderAgent Agent, SequenceAdapter Adapter) CoderWithAdapter(LoopTools tools)
+    {
+        var adapter = new SequenceAdapter(CoderResponses());
+        return (new([adapter], new Credentials(), tools, Options.Create(new ExecutionOptions { MaximumCoderToolExecutions = 5, DefaultModelContextWindowTokens = 32_000 })), adapter);
+    }
     private static (ReviewerAgent Agent, SequenceAdapter Adapter) Reviewer(string decision, string? feedback) => ReviewerRaw(JsonSerializer.Serialize(new { decision, summary = "reviewed", feedback, findings = Array.Empty<object>() }));
     private static (ReviewerAgent Agent, SequenceAdapter Adapter) ReviewerRaw(string response)
     {
@@ -146,6 +190,21 @@ public sealed class CoreCoderReviewerLoopTests
     {
         public Task<ProviderCredentialReadResult> RetrieveAsync(Guid connectionId, CancellationToken cancellationToken) => Task.FromResult(new ProviderCredentialReadResult(ProviderCredentialReadStatus.Found, new("fake"), null, null));
         public Task StoreAsync(Guid connectionId, ProviderCredential credential, CancellationToken cancellationToken) => throw new NotSupportedException(); public Task DeleteAsync(Guid connectionId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+    private sealed class RateLimitAfterReadAdapter : IAiProviderAdapter
+    {
+        private int calls;
+        public ProviderType ProviderType => ProviderType.OpenAI;
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext connection, RoutedModel model, AgentTurnRequest request, CancellationToken cancellationToken)
+        {
+            if (calls++ == 0)
+                return Task.FromResult(new AgentTurnResponse(new("first"), [new("read", "read_file", "{\"path\":\"User.cs\"}")], "first", 10, 5, "completed"));
+            var capacity = new ProviderCapacityMetadata(System.Net.HttpStatusCode.TooManyRequests, RetryAfter: TimeSpan.FromSeconds(1), TokenReset: TimeSpan.FromSeconds(1), RemainingTokens: 0, Scope: RateLimitScope.Tokens, TemporaryCapacity: true, CumulativeWaitMilliseconds: 250);
+            throw new ProviderRequestException("provider_rate_limited", "Rate limited.", System.Net.HttpStatusCode.TooManyRequests, true, capacity);
+        }
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext connection, RoutedModel model, LanguageModelRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
     private sealed class LoopTools : IRepositoryTools
     {

@@ -41,8 +41,8 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
             instruction = "Use repository functions to inspect, implement, validate, then call complete_task. Call report_blocker only for a precise safe blocker."
         });
         var contextWindow = context.Model.ContextWindowSize ?? options.Value.DefaultModelContextWindowTokens;
-        var maximumOutput = Math.Min(Math.Max(1, contextWindow / 2), Math.Max(1, context.Model.MaximumOutputSize ?? options.Value.DefaultCoderMaximumOutputTokens));
-        if (EstimateTokens(initialInput) >= Math.Max(1, contextWindow - maximumOutput))
+        var modelMaximumOutput = Math.Min(Math.Max(1, contextWindow / 2), Math.Max(1, context.Model.MaximumOutputSize ?? options.Value.DefaultCoderMaximumOutputTokens));
+        if (EstimateTokens(initialInput) >= Math.Max(1, contextWindow - modelMaximumOutput))
             return Failure("provider_context_limit_exceeded", "The Coder request cannot fit the selected model's advertised context window.");
         AgentConversationReference? conversation = null;
         IReadOnlyList<AgentToolResult> pendingResults = [];
@@ -67,20 +67,36 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
         string? providerStatus = null;
         string? incompleteReason = null;
         var phase = "Discovery";
+        var reservationReasons = new List<string>();
+        var maximumReservation = 0;
+        int? previousReservation = null;
+        var priorOutputTruncated = false;
+        var providerResetUsed = false;
+        RateLimitScope? lastRateLimitScope = null;
+        long capacityWait = 0;
+        long? providerRemainingTokens = null;
+        int? previousOutputTokens = null;
+        var endpoint = Enum.TryParse<ProviderEndpoint>(context.Model.Endpoint, out var parsedEndpoint) ? parsedEndpoint : ProviderEndpoint.Responses;
+        var estimatedDiff = context.ExpectedDiffTokens ?? Math.Clamp(800 + context.AcceptanceCriteria.Count * 500 + context.TaskDescription.Length / 3, 1_000, 12_000);
 
         while (toolSteps < options.Value.MaximumCoderToolExecutions && rounds < options.Value.MaximumCoderProviderRounds)
         {
+            var pendingPayloadTokens = pendingResults.Sum(x => EstimateTokens(x.Output));
+            var reservation = AdaptiveOutputReservationPolicy.Reserve(new(endpoint, modelMaximumOutput, estimatedDiff, phase, currentDiffExists, pendingPayloadTokens, previousOutputTokens, previousReservation, priorOutputTruncated, providerResetUsed, lastRateLimitScope, providerRemainingTokens));
+            previousReservation = reservation.Tokens;
+            maximumReservation = Math.Max(maximumReservation, reservation.Tokens);
+            reservationReasons.Add($"Round {rounds + 1}: {reservation.Tokens} tokens — {reservation.Reason}.");
             AgentTurnResponse turn;
             try
             {
                 turn = await adapter.CompleteAgentTurnAsync(
                     new(connectionId, context.Model.ProviderType, credential.Credential!),
                     new(context.Model.DiscoveredModelId, context.Model.ProviderModelId),
-                    new(context.Model.ProviderModelId, Load("coder-v1"), conversation is null ? initialInput : null, definitions, pendingResults, conversation, maximumOutput, Reasoning(context), "low"), ct);
+                    new(context.Model.ProviderModelId, Load("coder-v1"), conversation is null ? initialInput : null, definitions, pendingResults, conversation, reservation.Tokens, Reasoning(context), "low"), ct);
             }
             catch (ProviderRequestException ex)
             {
-                return Failure(ex.Code, ex.Message);
+                return WithTelemetry(Failure(ex.Code, ex.Message, toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode), ex.Capacity);
             }
             catch (NotSupportedException)
             {
@@ -99,13 +115,25 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
             paidRequests += turn.SameModelRequestAttemptCount;
             totalInput += turn.InputTokenCount ?? 0;
             totalOutput += turn.OutputTokenCount ?? 0;
+            previousOutputTokens = turn.OutputTokenCount;
             requestId = turn.ProviderRequestId ?? requestId;
             providerStatus = turn.ResponseStatus;
             incompleteReason = turn.IncompleteReason;
-            if (turn.SafeFailureCode is { } safeCode)
-                return Failure(safeCode, SafeAgentProviderMessage(safeCode, turn), toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
-
+            capacityWait += turn.CumulativeRateLimitWaitMilliseconds;
+            providerResetUsed |= turn.ProviderResetUsed;
+            lastRateLimitScope = turn.LastRateLimitScope ?? lastRateLimitScope;
+            providerRemainingTokens = turn.ProviderRemainingTokens ?? providerRemainingTokens;
             conversation = turn.Conversation;
+            if (turn.SafeFailureCode == "provider_output_truncated" && reservation.Tokens < modelMaximumOutput)
+            {
+                priorOutputTruncated = true;
+                pendingResults = [];
+                continue;
+            }
+            if (turn.SafeFailureCode is { } safeCode)
+                return WithTelemetry(Failure(safeCode, SafeAgentProviderMessage(safeCode, turn), toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode));
+
+            priorOutputTruncated = false;
             var results = new List<AgentToolResult>();
             var remainingToolSteps = options.Value.MaximumCoderToolExecutions - toolSteps;
             var unseenRepositoryCalls = turn.ToolCalls
@@ -114,7 +142,7 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
                 .Distinct(StringComparer.Ordinal)
                 .Count();
             if (unseenRepositoryCalls > remainingToolSteps)
-                return Failure("coder_emergency_circuit_breaker_triggered", $"The Coder returned {unseenRepositoryCalls} new repository tool calls with only {remainingToolSteps} executions remaining. No calls from the turn were executed.", toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
+                return WithTelemetry(Failure("coder_emergency_circuit_breaker_triggered", $"The Coder returned {unseenRepositoryCalls} new repository tool calls with only {remainingToolSteps} executions remaining. No calls from the turn were executed.", toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode));
 
             foreach (var call in turn.ToolCalls)
             {
@@ -149,16 +177,16 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
                     {
                         var changed = await tools.RunCommandAsync(context.Workspace, new("git", ["diff", "--name-only", "--"]), ct);
                         var files = changed.Succeeded ? changed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
-                        return new(true, RequiredString(arguments, "summary"), files, StringArray(arguments, "validationNotes"), toolSteps, requestId, totalInput, totalOutput, ResponseType: "complete_task", SuccessfulReadCount: successfulReads, SuccessfulSearchCount: successfulSearches, SuccessfulPatchCount: successfulPatches, RepositoryInspected: repositoryInspected, CurrentDiffExists: true, PrematureCompletionCount: prematureCompletions, ProviderRoundTripCount: rounds, MaximumSingleRequestInput: EstimateTokens(initialInput), ProviderResponseStatus: providerStatus, ProviderIncompleteReason: incompleteReason, PaidProviderRequestCount: paidRequests, CurrentPhase: "Completion", PatchAttemptCount: patchAttempts, FailedPatchCount: failedPatches, LastPatchFailureCode: lastPatchFailureCode);
+                        return new(true, RequiredString(arguments, "summary"), files, StringArray(arguments, "validationNotes"), toolSteps, requestId, totalInput, totalOutput, ResponseType: "complete_task", SuccessfulReadCount: successfulReads, SuccessfulSearchCount: successfulSearches, SuccessfulPatchCount: successfulPatches, RepositoryInspected: repositoryInspected, CurrentDiffExists: true, PrematureCompletionCount: prematureCompletions, ProviderRoundTripCount: rounds, MaximumSingleRequestInput: EstimateTokens(initialInput), ProviderResponseStatus: providerStatus, ProviderIncompleteReason: incompleteReason, PaidProviderRequestCount: paidRequests, CurrentPhase: "Completion", PatchAttemptCount: patchAttempts, FailedPatchCount: failedPatches, LastPatchFailureCode: lastPatchFailureCode, MaximumRequestedOutputReservation: maximumReservation, OutputReservationReasons: reservationReasons, ProviderCapacityWaitMilliseconds: capacityWait, ProviderResetUsed: providerResetUsed, LastRateLimitScope: lastRateLimitScope?.ToString());
                     }
                     if (call.Name == "complete_task")
                     {
                         prematureCompletions++;
                         if (prematureCompletions >= 2)
-                            return Failure("coder_protocol_failed", "The selected Coder model completed before satisfying the repository inspection and patch protocol.", toolSteps, requestId, totalInput, totalOutput, "complete_task", successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
+                            return WithTelemetry(Failure("coder_protocol_failed", "The selected Coder model completed before satisfying the repository inspection and patch protocol.", toolSteps, requestId, totalInput, totalOutput, "complete_task", successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode));
                     }
                     if (call.Name == "report_blocker" && accepted)
-                        return BlockedNative(arguments, toolSteps, requestId, totalInput, totalOutput, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, rounds, paidRequests, patchAttempts, failedPatches, lastPatchFailureCode);
+                        return WithTelemetry(BlockedNative(arguments, toolSteps, requestId, totalInput, totalOutput, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, rounds, paidRequests, patchAttempts, failedPatches, lastPatchFailureCode));
                 }
                 else
                 {
@@ -175,15 +203,17 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
                         successfulSearches++;
                         repositoryInspected = true;
                     }
+                    if (repositoryInspected && successfulPatches == 0)
+                        phase = "Implementation";
                     if (call.Name == "apply_patch")
                     {
                         patchAttempts++;
-                        phase = "Implementation";
                         if (repositoryResult.Succeeded)
                         {
                             successfulPatches++;
                             successfulValidations = 0;
                             lastPatchFailureCode = null;
+                            phase = "Validation";
                         }
                         else
                         {
@@ -196,7 +226,7 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
                     if (call.Name == "run_command" && successfulPatches > 0 && repositoryResult.Succeeded)
                     {
                         successfulValidations++;
-                        phase = "Validation";
+                        phase = "Completion";
                     }
                     nativeResult = ToolOutput(call.CallId, repositoryResult);
                 }
@@ -207,7 +237,20 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
             pendingResults = results;
         }
 
-        return Failure("coder_emergency_circuit_breaker_triggered", $"The Coder reached the emergency circuit breaker after {rounds} provider rounds and {toolSteps} repository tool executions. {ToolSummary(toolCounts)}", toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode);
+        return WithTelemetry(Failure("coder_emergency_circuit_breaker_triggered", $"The Coder reached the emergency circuit breaker after {rounds} provider rounds and {toolSteps} repository tool executions. {ToolSummary(toolCounts)}", toolSteps, requestId, totalInput, totalOutput, null, successfulReads, successfulSearches, successfulPatches, repositoryInspected, currentDiffExists, prematureCompletions, rounds, 0, EstimateTokens(initialInput), providerStatus, incompleteReason, 0, 0, paidRequests, phase, null, patchAttempts, failedPatches, lastPatchFailureCode));
+
+        CoderResult WithTelemetry(CoderResult result, ProviderCapacityMetadata? terminalCapacity = null)
+        {
+            if (terminalCapacity is not null)
+            {
+                capacityWait += terminalCapacity.CumulativeWaitMilliseconds;
+                providerResetUsed |= terminalCapacity.RetryAfter is not null || terminalCapacity.TokenReset is not null || terminalCapacity.RequestReset is not null;
+                lastRateLimitScope = terminalCapacity.Scope;
+                providerRemainingTokens = terminalCapacity.RemainingTokens;
+                reservationReasons.Add($"Terminal provider capacity: scope {terminalCapacity.Scope}, remaining tokens {terminalCapacity.RemainingTokens?.ToString() ?? "unknown"}, reset metadata {(providerResetUsed ? "present" : "absent")}.");
+            }
+            return result with { MaximumRequestedOutputReservation = maximumReservation, OutputReservationReasons = reservationReasons, ProviderCapacityWaitMilliseconds = capacityWait, ProviderResetUsed = providerResetUsed, LastRateLimitScope = lastRateLimitScope?.ToString() };
+        }
     }
 
     internal static IReadOnlyList<AgentToolDefinition> NativeTools() =>
