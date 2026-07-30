@@ -49,6 +49,8 @@ public sealed class ModelRouterTests
     [InlineData("Do not add a migration.")]
     [InlineData("Must not create a database migration.")]
     [InlineData("No migrations are introduced.")]
+    [InlineData("Do not add a setter, EF configuration, persistence mapping, or migration.")]
+    [InlineData("The property is computed and is not persisted or included in a migration.")]
     public void Negative_database_constraints_do_not_create_database_work(string constraint)
     {
         var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
@@ -70,6 +72,19 @@ public sealed class ModelRouterTests
         Assert.True(profile.DatabaseInvolvement);
         Assert.Contains(profile.Reasons, x => x.StartsWith("Positive database evidence:", StringComparison.Ordinal));
         Assert.Contains(profile.Reasons, x => x.StartsWith("Negative database constraints:", StringComparison.Ordinal));
+    }
+    [Theory]
+    [InlineData("A migration is required.")]
+    [InlineData("This change requires a migration.")]
+    [InlineData("Do not add a setter; create a migration.")]
+    [InlineData("Do not add a setter, but a migration is required.")]
+    public void Explicit_migration_requirement_is_positive_database_evidence(string requirement)
+    {
+        var profiler = new ServiceCollection().AddApplication().BuildServiceProvider().GetRequiredService<ITaskProfiler>();
+        var profile = profiler.Profile(new(Guid.NewGuid(), null, AgentRole.Coder, requirement, TaskTitle: "Persist account state", ChangeType: "Extension", AffectedAreas: ["Domain"]));
+
+        Assert.Equal(EngineeringTaskType.DatabaseMigration, profile.TaskType);
+        Assert.True(profile.DatabaseInvolvement);
     }
     [Fact]
     public void Test_acceptance_criterion_does_not_reclassify_domain_task_as_testing()

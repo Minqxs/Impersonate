@@ -5,8 +5,8 @@ namespace Impersonate.Application.Ai;
 
 internal sealed class DeterministicTaskProfiler : ITaskProfiler
 {
-    private static readonly Regex DatabaseNegative = new(@"\bno\s+new\s+database\s+column\s+or\s+migration\b|\b(?:no|without|does\s+not\s+require|do\s+not\s+(?:add|create)|must\s+not\s+(?:add|create))\s+(?:an?\s+)?(?:new\s+)?(?:database\s+)?(?:columns?|changes?|migrations?|schema\s+changes?)\b|\b(computed\s+only|not\s+persisted|read[- ]only\s+projection)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex DatabasePositive = new(@"\b(add|create|change|update|alter)\s+(an?\s+)?(ef\s+core\s+)?(migration|schema|persisted\s+column|database\s+(column|index))\b|\b(migrations?|persisted\s+column|database\s+index|ef\s+mapping|dbcontext\s+change|repository\s+persistence|persist(ed|ence)\s+(property|field|column))\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex DatabaseNegative = new(@"\bno\s+new\s+database\s+column\s+or\s+migration\b|\b(?:do\s+not|must\s+not)\s+(?:add|create)\s+(?:[^,.;]+,\s*)+or\s+(?:an?\s+)?migrations?\b|\b(?:no|without|does\s+not\s+require|do\s+not\s+(?:add|create)|must\s+not\s+(?:add|create))\s+(?:an?\s+)?(?:new\s+)?(?:database\s+)?(?:columns?|changes?|migrations?|schema\s+changes?)\b|\b(computed\s+only|not\s+persisted|read[- ]only\s+projection)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex DatabasePositive = new(@"\b(add|create|change|update|alter)\s+(an?\s+)?(ef\s+core\s+)?(migration|schema|persisted\s+column|database\s+(column|index))\b|\b(migration\s+(?:is\s+)?required|requires?\s+(?:an?\s+)?migration|persisted\s+column|database\s+index|ef\s+mapping|dbcontext\s+change|repository\s+persistence|persist(ed|ence)\s+(property|field|column))\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public TaskProfile Profile(AgentRole role, string description) => Profile(new(Guid.Empty, null, role, description));
 
