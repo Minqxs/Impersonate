@@ -351,17 +351,18 @@ public sealed class PipelineRun
         }
     }
 
-    public void BlockForInfrastructure(PlannedTask task, string code, string message, DateTimeOffset? at = null)
+    public InfrastructureAttemptRollback BlockForInfrastructure(PlannedTask task, string code, string message, DateTimeOffset? at = null)
     {
         RequireClaimed(task);
         if (task.Status != PlannedTaskStatus.Coding)
             throw Invalid("Infrastructure blocking is allowed only before Coder execution.");
-        task.RollbackExecutionStartForInfrastructure();
+        var attempt = task.RollbackExecutionStartForInfrastructure();
         InfrastructureFailureCode = Required(code, 100);
         InfrastructureFailureMessage = Required(message, 1000);
         InfrastructureBlockedTaskId = task.Id;
         ClearExecutionClaim();
         Transition(PipelineRunStatus.WaitingForInfrastructure, "ExecutionInfrastructureBlocked", InfrastructureFailureMessage, at);
+        return new InfrastructureAttemptRollback(task.Id, task.Sequence, attempt);
     }
 
     public void RetryInfrastructure(DateTimeOffset? at = null)

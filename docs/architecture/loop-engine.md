@@ -11,6 +11,12 @@ Milestone 5 adds `ReadyForExecution → Executing → ReadyForDelivery`. A seria
 Milestone 5.1 enriches Planning with a bounded repository snapshot and a validated dependency DAG. A deterministic topological ordering prioritises shared contracts, then conflict and architectural-layer heuristics while always respecting dependencies. Original and final order plus adjustment reasons are persisted. Execution remains sequential; parallel task execution is not implemented.
 
 Execution artifacts follow the delivery invariant `one task -> one approved patch -> one future commit -> one future pull request`. A task workspace composes only its approved dependency closure into the Git index, while its working-tree diff remains task-specific. Reviewer input is that incremental patch rather than cumulative feature history. Target commits, branches, pushes, and pull requests remain deferred to Milestone 6.
+
+## Infrastructure rollback persistence
+
+Task claiming deliberately persists a new `Started` attempt before repository workspace preparation. If preparation fails before composition or provider execution, the aggregate returns the exact transient attempt that it rolled back. The Application layer passes that entity to the repository for an explicit tracked delete, then persists the attempt deletion, task restoration, cleared claim, infrastructure failure, and `WaitingForInfrastructure` transition in one save boundary. The required task-attempt relationship remains `DeleteBehavior.Restrict`; rollback does not depend on cascade deletion or a nullable foreign key.
+
+Only a newest `Started` attempt with no composition, provider, token, patch, failure, or review history is eligible. Initial rollback restores `Pending` and clears its start time. Revision rollback restores `ChangesRequested` and decrements exactly the revision start it reverses. Earlier attempts, reviews, invocations, and model-selection decisions remain durable, and retry reuses the next contiguous attempt number.
 # Provider retries inside an operation
 
 A same-model capacity retry is internal to the current Planner, Coder, or Reviewer operation. It does not create a planning attempt, task attempt, model-selection decision, revision, or repeated repository tool action. Coder tool-loop state and Reviewer patch identity are therefore preserved.

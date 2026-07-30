@@ -212,12 +212,54 @@ public sealed class PipelineRunTests
         var now = DateTimeOffset.UtcNow;
         var r = ExecutableRun(2);
         var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
-        r.BlockForInfrastructure(task, "repository_dns_failed", "DNS failed", now);
+        var rollback = r.BlockForInfrastructure(task, "repository_dns_failed", "DNS failed", now);
         Assert.Equal(PipelineRunStatus.WaitingForInfrastructure, r.Status);
         Assert.All(r.Tasks, x => Assert.Equal(PlannedTaskStatus.Pending, x.Status));
         Assert.Empty(task.Attempts);
         Assert.Equal(0, task.RevisionCount);
         Assert.Equal(task.Id, r.InfrastructureBlockedTaskId);
+        Assert.Equal(task.Id, rollback.PlannedTaskId);
+        Assert.Equal(1, rollback.AttemptNumber);
+        Assert.Equal(TaskAttemptType.Initial, rollback.AttemptType);
+    }
+
+    [Fact]
+    public void Revision_infrastructure_rollback_restores_changes_requested_and_preserves_history()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(1);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        task.CompleteAttempt("initial change");
+        r.MoveTaskToReview(task, now.AddSeconds(1));
+        var review = r.RecordReview(task, ReviewDecisionType.ChangesRequested, "needs work", "Fix validation", now.AddSeconds(2));
+        r.ClearExecutionClaim();
+        var revision = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(6), now.AddSeconds(3));
+
+        var rollback = r.BlockForInfrastructure(revision, "repository_dns_failed", "DNS failed", now.AddSeconds(4));
+
+        Assert.Equal(TaskAttemptType.Revision, rollback.AttemptType);
+        Assert.Equal(2, rollback.AttemptNumber);
+        Assert.Equal(PlannedTaskStatus.ChangesRequested, task.Status);
+        Assert.Equal(0, task.RevisionCount);
+        Assert.Single(task.Attempts);
+        Assert.Same(review, Assert.Single(task.ReviewDecisions));
+        r.RetryInfrastructure(now.AddSeconds(5));
+        var retried = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(7), now.AddSeconds(6));
+        Assert.Equal(2, retried.Attempts.Last().AttemptNumber);
+        Assert.Equal(1, retried.RevisionCount);
+    }
+
+    [Fact]
+    public void Infrastructure_rollback_rejects_an_attempt_after_provider_execution()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var r = ExecutableRun(1);
+        var task = r.ClaimNextTask(Guid.NewGuid(), "worker", now.AddMinutes(5), now);
+        task.Attempts.Single().RecordExecution("OpenAI", "gpt-test", "coder-v1", null, 1, 1, 1, "[]", "patch", new string('a', 64), "[]");
+
+        Assert.Throws<InvalidOperationException>(() => r.BlockForInfrastructure(task, "repository_dns_failed", "DNS failed", now));
+        Assert.Single(task.Attempts);
+        Assert.Equal(PlannedTaskStatus.Coding, task.Status);
     }
     [Fact]
     public void Infrastructure_retry_resumes_same_task_and_rejects_invalid_retry()

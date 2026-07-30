@@ -201,16 +201,21 @@ public sealed class PlannedTask
         return AddAttempt(TaskAttemptType.Revision, at);
     }
 
-    internal void RollbackExecutionStartForInfrastructure()
+    internal TaskAttempt RollbackExecutionStartForInfrastructure()
     {
         if (Status != PlannedTaskStatus.Coding)
             throw PipelineRun.Invalid("Task is not starting Coder execution.");
         var attempt = attempts.LastOrDefault() ?? throw PipelineRun.Invalid("No task attempt exists.");
-        if (attempt.Status != TaskAttemptStatus.Started || attempt.Provider is not null)
+        if (!attempt.IsUnstartedTransientAttempt)
             throw PipelineRun.Invalid("Coder execution has already started.");
-        attempts.Remove(attempt);
+        if (reviewDecisions.Any(x => x.TaskAttemptId == attempt.Id))
+            throw PipelineRun.Invalid("The task attempt has review history.");
+        if (!attempts.Remove(attempt))
+            throw PipelineRun.Invalid("The transient task attempt could not be removed.");
         if (attempt.AttemptType == TaskAttemptType.Revision)
         {
+            if (RevisionCount <= 0)
+                throw PipelineRun.Invalid("Revision state is inconsistent.");
             RevisionCount--;
             Status = PlannedTaskStatus.ChangesRequested;
         }
@@ -219,6 +224,7 @@ public sealed class PlannedTask
             Status = PlannedTaskStatus.Pending;
             StartedAtUtc = null;
         }
+        return attempt;
     }
 
     public void StartCommit()

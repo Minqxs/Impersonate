@@ -110,6 +110,23 @@ public sealed class TaskAttempt
         get; private set;
     }
 
+    public bool IsUnstartedTransientAttempt =>
+        Status == TaskAttemptStatus.Started &&
+        Provider is null &&
+        Model is null &&
+        PromptVersion is null &&
+        ProviderRequestId is null &&
+        InputTokenCount is null &&
+        OutputTokenCount is null &&
+        ToolStepCount == 0 &&
+        Summary is null &&
+        FailureCode is null &&
+        FailureReason is null &&
+        PatchArtifactReference is null &&
+        PatchSha256 is null &&
+        SourceBaseCommitSha is null &&
+        CompositionStatus is null;
+
     internal static TaskAttempt Create(Guid id, int number, TaskAttemptType type, DateTimeOffset? at) => new()
     {
         Id = Guid.NewGuid(),
