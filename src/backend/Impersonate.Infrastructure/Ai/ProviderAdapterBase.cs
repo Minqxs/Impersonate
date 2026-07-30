@@ -25,6 +25,8 @@ internal abstract class ProviderAdapterBase(HttpClient http, IOptions<ExecutionO
     protected abstract IReadOnlyList<ProviderModel> ParseModels(JsonElement root);
     protected abstract HttpRequestMessage CompletionRequest(ProviderConnectionContext context, RoutedModel model, LanguageModelRequest request);
     protected abstract LanguageModelResponse ParseCompletion(JsonElement root, HttpResponseMessage response);
+    public virtual Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext context, RoutedModel model, AgentTurnRequest request, CancellationToken ct) =>
+        throw new NotSupportedException($"{ProviderType} does not support native agent tools.");
     public async Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext context, CancellationToken ct)
     {
         try
@@ -53,6 +55,21 @@ internal abstract class ProviderAdapterBase(HttpClient http, IOptions<ExecutionO
     }
 
     public async Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext context, RoutedModel model, LanguageModelRequest request, CancellationToken ct)
+        => await SendWithRetryAsync(context, model, () => CompletionRequest(context, model, request), async (response, token) =>
+        {
+            var body = await response.Content.ReadAsStringAsync(token);
+            using var json = JsonDocument.Parse(body);
+            return ParseCompletion(json.RootElement, response);
+        }, (result, attempts, retries, waited, scope, reset) => result with
+        {
+            SameModelRequestAttemptCount = attempts,
+            RateLimitRetryCount = retries,
+            CumulativeRateLimitWaitMilliseconds = waited,
+            LastRateLimitScope = scope,
+            ProviderResetUsed = reset
+        }, ct);
+
+    protected async Task<T> SendWithRetryAsync<T>(ProviderConnectionContext context, RoutedModel model, Func<HttpRequestMessage> requestFactory, Func<HttpResponseMessage, CancellationToken, Task<T>> parse, Func<T, int, int, long, RateLimitScope?, bool, T> metadata, CancellationToken ct)
     {
         var family = ModelRateLimitFamily.Get(context.ProviderType, model.ProviderModelId);
         var attempts = 0;
@@ -66,20 +83,11 @@ internal abstract class ProviderAdapterBase(HttpClient http, IOptions<ExecutionO
             attempts++;
             try
             {
-                using var message = CompletionRequest(context, model, request);
+                using var message = requestFactory();
                 using var response = await Http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct);
                 await EnsureSafeAsync(response, ct);
-                var body = await response.Content.ReadAsStringAsync(ct);
-                using var json = JsonDocument.Parse(body);
-                var parsed = ParseCompletion(json.RootElement, response);
-                return parsed with
-                {
-                    SameModelRequestAttemptCount = attempts,
-                    RateLimitRetryCount = retries,
-                    CumulativeRateLimitWaitMilliseconds = waited,
-                    LastRateLimitScope = lastScope,
-                    ProviderResetUsed = providerReset
-                };
+                var parsed = await parse(response, ct);
+                return metadata(parsed, attempts, retries, waited, lastScope, providerReset);
             }
             catch (ProviderRequestException ex) when (ex.Code == "provider_rate_limited" && ex.Capacity?.TemporaryCapacity == true && retries < retry.MaximumSameModelRateLimitRetries)
             {

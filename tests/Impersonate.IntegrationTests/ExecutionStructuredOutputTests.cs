@@ -14,8 +14,17 @@ public sealed class ExecutionStructuredOutputTests
     [Fact]
     public void OpenAi_execution_schemas_satisfy_strict_object_rules()
     {
-        AssertStrictObjects(CoderAgent.StructuredOutputSchema);
+        foreach (var tool in CoderAgent.NativeTools())
+            AssertStrictObjects(tool.Parameters.GetRawText());
         AssertStrictObjects(ReviewerAgent.StructuredOutputSchema);
+    }
+
+    [Fact]
+    public void Native_apply_patch_contract_requires_git_unified_diff()
+    {
+        var tool = Assert.Single(CoderAgent.NativeTools(), x => x.Name == "apply_patch");
+        Assert.Contains("diff --git", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("Do not use '*** Begin Patch'", tool.Description, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -104,10 +113,9 @@ public sealed class ExecutionStructuredOutputTests
         Assert.Equal("Completion", result.CurrentPhase);
         Assert.True(adapter.Requests.Count > 4);
         var implementation = adapter.Requests[3];
-        Assert.Contains("CustomerProfile", implementation.UserContent);
-        Assert.Contains("ServiceProviderProfile", implementation.UserContent);
-        Assert.Contains("FullName", implementation.UserContent);
-        Assert.Contains("tool_results", implementation.UserContent);
+        Assert.Contains("Succeeded", implementation.UserContent);
+        Assert.DoesNotContain("tool_results", implementation.UserContent);
+        Assert.DoesNotContain("tool_calls", implementation.UserContent);
         Assert.DoesNotContain("mandatory_implementation", implementation.UserContent);
     }
 
@@ -141,7 +149,7 @@ public sealed class ExecutionStructuredOutputTests
         Assert.Equal(1, result.SuccessfulPatchCount);
         Assert.Null(result.LastPatchFailureCode);
         Assert.Contains("patch_rejected", adapter.Requests[2].UserContent);
-        Assert.Contains("read_file", adapter.Requests[2].UserContent);
+        Assert.DoesNotContain("tool_calls", adapter.Requests[2].UserContent);
     }
 
     [Fact]
@@ -153,6 +161,66 @@ public sealed class ExecutionStructuredOutputTests
         Assert.False(result.Succeeded);
         Assert.Equal("coder_missing_repository_evidence", result.FailureCode);
         Assert.Contains("profile", result.FailureMessage!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Coder_returns_malformed_blocker_arguments_to_model_without_throwing()
+    {
+        var adapter = new MalformedBlockerAdapter();
+        var agent = new CoderAgent([adapter], new CredentialStore(), new EvidenceTools(), Options.Create(new ExecutionOptions()));
+        var model = new SelectedModel(Guid.NewGuid(), Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", ModelSelectionSource.AutomaticRouting, 100, "test");
+
+        var result = await agent.ExecuteAsync(new(Guid.NewGuid(), Guid.NewGuid(), "Feature", Guid.NewGuid(), "Task", "Description", ["Done"], 1, 0, null, [], new("workspace"), model), default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("coder_safe_implementation_blocked", result.FailureCode);
+        Assert.Contains("tool_arguments_invalid", adapter.Requests[1].ToolResults.Single().Output);
+    }
+
+    [Fact]
+    public async Task Coder_rejects_turn_exceeding_remaining_tool_budget_before_execution()
+    {
+        var tools = new ProfileTools();
+        var agent = new CoderAgent([new OverflowAdapter()], new CredentialStore(), tools, Options.Create(new ExecutionOptions { MaximumCoderToolExecutions = 1, MaximumCoderProviderRounds = 2 }));
+        var model = new SelectedModel(Guid.NewGuid(), Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", ModelSelectionSource.AutomaticRouting, 100, "test");
+
+        var result = await agent.ExecuteAsync(new(Guid.NewGuid(), Guid.NewGuid(), "Feature", Guid.NewGuid(), "Task", "Description", ["Done"], 1, 0, null, [], new("workspace"), model), default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("coder_emergency_circuit_breaker_triggered", result.FailureCode);
+        Assert.Equal(0, result.ToolStepCount);
+        Assert.Equal(0, tools.ReadCalls);
+        Assert.Equal(0, tools.PatchCalls);
+    }
+
+    [Fact]
+    public async Task Coder_invalidates_validation_when_a_later_patch_succeeds()
+    {
+        var adapter = new NoValidationAdapter();
+        var agent = new CoderAgent([adapter], new CredentialStore(), new ProfileTools(), Options.Create(new ExecutionOptions { MaximumCoderToolExecutions = 10, MaximumCoderProviderRounds = 10 }));
+        var model = new SelectedModel(Guid.NewGuid(), Guid.NewGuid(), ProviderType.OpenAI, "gpt-4.1", ModelSelectionSource.AutomaticRouting, 100, "test");
+
+        var result = await agent.ExecuteAsync(new(Guid.NewGuid(), Guid.NewGuid(), "Feature", Guid.NewGuid(), "Task", "Description", ["Done"], 1, 0, null, [], new("workspace"), model), default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("coder_protocol_failed", result.FailureCode);
+        Assert.Contains("successfulValidations\":0", adapter.Requests[6].ToolResults.Single().Output);
+    }
+
+    [Fact]
+    public async Task Native_calls_validate_arguments_and_duplicate_call_ids_are_idempotent()
+    {
+        var adapter = new NativeSafetyAdapter();
+        var tools = new ProfileTools();
+        var agent = new CoderAgent([adapter], new CredentialStore(), tools, Options.Create(new ExecutionOptions { MaximumCoderProviderRounds = 8, MaximumCoderToolExecutions = 20 }));
+        var model = new SelectedModel(Guid.NewGuid(), Guid.NewGuid(), ProviderType.OpenAI, "gpt-5", ModelSelectionSource.AutomaticRouting, 100, "test");
+        var result = await agent.ExecuteAsync(new(Guid.NewGuid(), Guid.NewGuid(), "Feature", Guid.NewGuid(), "Task", "Description", ["Done"], 1, 0, null, [], new("workspace"), model), default);
+
+        Assert.True(result.Succeeded, result.FailureMessage);
+        Assert.Equal(1, tools.PatchCalls);
+        Assert.Contains("tool_arguments_invalid", adapter.Requests[1].ToolResults.Single().Output);
+        Assert.Equal(3, adapter.Requests[2].ToolResults.Count);
+        Assert.Equal(adapter.Requests[2].ToolResults[1], adapter.Requests[2].ToolResults[2]);
     }
 
     [Theory]
@@ -198,10 +266,52 @@ public sealed class ExecutionStructuredOutputTests
         }
     }
 
+    private static async Task<AgentTurnResponse> LegacyTurn(IAiProviderAdapter adapter, ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct)
+    {
+        var response = await adapter.CompleteAsync(c, m, new(q.Model, q.SystemInstructions, q.InitialInput ?? JsonSerializer.Serialize(q.ToolResults), "{}", q.MaximumOutputTokens), ct);
+        using var document = JsonDocument.Parse(response.Content);
+        var root = document.RootElement;
+        var type = root.GetProperty("type").GetString();
+        var calls = new List<AgentToolCall>();
+        if (type == "tool_calls")
+            foreach (var call in root.GetProperty("calls").EnumerateArray())
+            {
+                var tool = call.GetProperty("tool").GetString()!;
+                calls.Add(new(call.GetProperty("id").GetString()! + "-" + Guid.NewGuid().ToString("N"), tool, Normalize(tool, call.GetProperty("arguments"))));
+            }
+        else if (type == "complete")
+            calls.Add(new("terminal-complete-" + Guid.NewGuid().ToString("N"), "complete_task", JsonSerializer.Serialize(new
+            {
+                summary = root.GetProperty("summary").GetString(),
+                validationNotes = Array(root, "validationNotes"),
+                knownLimitations = Array(root, "knownLimitations")
+            })));
+        else if (type == "blocked")
+            calls.Add(new("terminal-blocked-" + Guid.NewGuid().ToString("N"), "report_blocker", JsonSerializer.Serialize(new
+            {
+                blockerCode = root.GetProperty("blockerCode").GetString(),
+                blockerMessage = root.GetProperty("blockerMessage").GetString(),
+                missingEvidencePaths = Array(root, "missingEvidencePaths")
+            })));
+        var id = response.ProviderRequestId ?? Guid.NewGuid().ToString("N");
+        return new(new(id), calls, id, response.InputTokenCount, response.OutputTokenCount, "completed");
+    }
+    private static string Normalize(string tool, JsonElement a) => tool switch
+    {
+        "list_files" or "read_file" => JsonSerializer.Serialize(new { path = a.GetProperty("path").GetString() }),
+        "search_text" => JsonSerializer.Serialize(new { query = a.GetProperty("query").GetString(), path = a.GetProperty("path").GetString() }),
+        "apply_patch" => JsonSerializer.Serialize(new { patch = a.GetProperty("patch").GetString() }),
+        "get_diff" => "{}",
+        "run_command" => JsonSerializer.Serialize(new { executable = a.GetProperty("executable").GetString(), arguments = Array(a, "arguments"), workingDirectory = a.GetProperty("workingDirectory").GetString(), timeoutSeconds = a.GetProperty("timeoutSeconds").GetInt32() }),
+        _ => "{}"
+    };
+    private static string[] Array(JsonElement value, string name) => value.TryGetProperty(name, out var array) && array.ValueKind == JsonValueKind.Array ? array.EnumerateArray().Select(x => x.GetString()!).ToArray() : [];
+
     private sealed class RejectingAdapter : IAiProviderAdapter
     {
         public ProviderType ProviderType => ProviderType.OpenAI;
         public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext connection, RoutedModel model, LanguageModelRequest request, CancellationToken cancellationToken) => throw new ProviderRequestException("provider_request_rejected", "The provider rejected the request. HTTP 400: Invalid response schema.", HttpStatusCode.BadRequest, false);
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
@@ -217,6 +327,12 @@ public sealed class ExecutionStructuredOutputTests
             CallCount++;
             throw new NotSupportedException();
         }
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            CallCount++;
+            throw new NotSupportedException();
+        }
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
@@ -229,6 +345,7 @@ public sealed class ExecutionStructuredOutputTests
             Requests.Add(request);
             return Task.FromResult(new LanguageModelResponse("{\"type\":\"complete\",\"calls\":null,\"summary\":\"done\",\"validationNotes\":[],\"knownLimitations\":[]}", "request", 10, 5));
         }
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
@@ -242,6 +359,7 @@ public sealed class ExecutionStructuredOutputTests
             var body = "{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"read\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/User.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null}";
             return Task.FromResult(new LanguageModelResponse(body, "request", 100, 20));
         }
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext connection, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
@@ -259,10 +377,12 @@ public sealed class ExecutionStructuredOutputTests
                 3 => Calls("search_text", "{\"path\":\"backend/tests\",\"query\":\"User\",\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),
                 4 => Calls("apply_patch", "{\"path\":null,\"query\":null,\"patch\":\"*** Begin Patch\\n*** Update File: backend/src/HomeTaskSA.Domain/Entities/User.cs\\n@@\\n+ public string DisplayName => CustomerProfile?.FullName ?? ServiceProviderProfile?.FullName ?? string.Empty;\\n*** End Patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),
                 5 => Calls("get_diff", "{\"path\":null,\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),
+                6 => Calls("run_command", "{\"path\":null,\"query\":null,\"patch\":null,\"executable\":\"dotnet\",\"arguments\":[\"test\",\"backend/tests/Domain.Tests.csproj\"],\"workingDirectory\":\".\",\"timeoutSeconds\":120}"),
                 _ => "{\"type\":\"complete\",\"calls\":null,\"summary\":\"Added DisplayName\",\"validationNotes\":[\"diff verified\"],\"knownLimitations\":[],\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}"
             };
             return Task.FromResult(new LanguageModelResponse(body, "request", 100, 20));
         }
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
         public static string Calls(string tool, string args) => $"{{\"type\":\"tool_calls\",\"calls\":[{{\"id\":\"x\",\"tool\":\"{tool}\",\"arguments\":{args}}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}}";
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException(); public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
     }
@@ -274,6 +394,7 @@ public sealed class ExecutionStructuredOutputTests
             var body = "{\"type\":\"tool_calls\",\"calls\":[{\"id\":\"r\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"backend/src/CustomerProfile.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}}],\"summary\":null,\"validationNotes\":null,\"knownLimitations\":null,\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}";
             return Task.FromResult(new LanguageModelResponse(body, $"request-{calls}", 10, 5));
         }
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException(); public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
     }
 
@@ -301,10 +422,12 @@ public sealed class ExecutionStructuredOutputTests
                 3 => WorkingSetAdapter.Calls("read_file", "{\"path\":\"User.cs\",\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),
                 4 => WorkingSetAdapter.Calls("apply_patch", "{\"path\":null,\"query\":null,\"patch\":\"good patch\",\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),
                 5 => WorkingSetAdapter.Calls("get_diff", "{\"path\":null,\"query\":null,\"patch\":null,\"executable\":null,\"arguments\":null,\"workingDirectory\":null,\"timeoutSeconds\":null}"),
+                6 => WorkingSetAdapter.Calls("run_command", "{\"path\":null,\"query\":null,\"patch\":null,\"executable\":\"dotnet\",\"arguments\":[\"test\"],\"workingDirectory\":\".\",\"timeoutSeconds\":120}"),
                 _ => "{\"type\":\"complete\",\"calls\":null,\"summary\":\"done\",\"validationNotes\":[],\"knownLimitations\":[],\"blockerCode\":null,\"blockerMessage\":null,\"missingEvidencePaths\":null}"
             };
             return Task.FromResult(new LanguageModelResponse(body, "request", 50_000, 20_000));
         }
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
         public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException(); public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
     }
     private sealed class PatchRetryTools : IRepositoryTools
@@ -319,6 +442,80 @@ public sealed class ExecutionStructuredOutputTests
     private sealed class BlockedAdapter : IAiProviderAdapter
     {
         public ProviderType ProviderType => ProviderType.OpenAI; public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q, CancellationToken ct) => Task.FromResult(new LanguageModelResponse("{\"type\":\"blocked\",\"calls\":null,\"summary\":null,\"validationNotes\":[],\"knownLimitations\":[],\"blockerCode\":\"missing_repository_evidence\",\"blockerMessage\":\"The required profile contract cannot be located.\",\"missingEvidencePaths\":[\"Profile.cs\"]}", "request", 10, 5)); public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException(); public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => LegacyTurn(this, c, m, q, ct);
+    }
+    private sealed class MalformedBlockerAdapter : IAiProviderAdapter
+    {
+        private int turn;
+        public ProviderType ProviderType => ProviderType.OpenAI;
+        public List<AgentTurnRequest> Requests { get; } = [];
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct)
+        {
+            Requests.Add(q);
+            turn++;
+            var call = turn == 1
+                ? new AgentToolCall("malformed", "report_blocker", "{\"blockerCode\":\"safe_implementation_blocked\"}")
+                : new AgentToolCall("valid", "report_blocker", "{\"blockerCode\":\"safe_implementation_blocked\",\"blockerMessage\":\"Cannot proceed safely.\",\"missingEvidencePaths\":[]}");
+            return Task.FromResult(new AgentTurnResponse(new($"response-{turn}"), [call], $"response-{turn}", 10, 5, "completed"));
+        }
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q, CancellationToken ct) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+    }
+    private sealed class OverflowAdapter : IAiProviderAdapter
+    {
+        public ProviderType ProviderType => ProviderType.OpenAI;
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct) => Task.FromResult(new AgentTurnResponse(new("response"), [new("read", "read_file", "{\"path\":\"User.cs\"}"), new("patch", "apply_patch", "{\"patch\":\"patch\"}")], "response", 10, 5, "completed"));
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q, CancellationToken ct) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+    }
+    private sealed class NoValidationAdapter : IAiProviderAdapter
+    {
+        private int turn;
+        public ProviderType ProviderType => ProviderType.OpenAI;
+        public List<AgentTurnRequest> Requests { get; } = [];
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct)
+        {
+            Requests.Add(q);
+            turn++;
+            IReadOnlyList<AgentToolCall> calls = turn switch
+            {
+                1 => [new("read", "read_file", "{\"path\":\"User.cs\"}")],
+                2 => [new("patch-1", "apply_patch", "{\"patch\":\"patch\"}")],
+                3 => [new("validate", "run_command", "{\"executable\":\"dotnet\",\"arguments\":[\"test\"],\"workingDirectory\":\".\",\"timeoutSeconds\":120}")],
+                4 => [new("patch-2", "apply_patch", "{\"patch\":\"patch\"}")],
+                5 => [new("diff", "get_diff", "{}")],
+                _ => [new($"complete-{turn}", "complete_task", "{\"summary\":\"done\",\"validationNotes\":[],\"knownLimitations\":[]}")]
+            };
+            return Task.FromResult(new AgentTurnResponse(new($"response-{turn}"), calls, $"response-{turn}", 10, 5, "completed"));
+        }
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q, CancellationToken ct) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+    }
+    private sealed class NativeSafetyAdapter : IAiProviderAdapter
+    {
+        private int turn;
+        public ProviderType ProviderType => ProviderType.OpenAI;
+        public List<AgentTurnRequest> Requests { get; } = [];
+        public Task<AgentTurnResponse> CompleteAgentTurnAsync(ProviderConnectionContext c, RoutedModel m, AgentTurnRequest q, CancellationToken ct)
+        {
+            Requests.Add(q);
+            turn++;
+            IReadOnlyList<AgentToolCall> calls = turn switch
+            {
+                1 => [new("bad", "read_file", "not-json")],
+                2 => [new("read", "read_file", "{\"path\":\"User.cs\"}"), new("patch", "apply_patch", "{\"patch\":\"good patch\"}"), new("patch", "apply_patch", "{\"patch\":\"good patch\"}")],
+                3 => [new("diff", "get_diff", "{}")],
+                4 => [new("validate", "run_command", "{\"executable\":\"dotnet\",\"arguments\":[\"test\"],\"workingDirectory\":\".\",\"timeoutSeconds\":120}")],
+                _ => [new("done", "complete_task", "{\"summary\":\"done\",\"validationNotes\":[],\"knownLimitations\":[]}")]
+            };
+            return Task.FromResult(new AgentTurnResponse(new($"response-{turn}"), calls, $"response-{turn}", 10, 5, "completed"));
+        }
+        public Task<LanguageModelResponse> CompleteAsync(ProviderConnectionContext c, RoutedModel m, LanguageModelRequest q, CancellationToken ct) => throw new InvalidOperationException("Text completion must not be used by Coder.");
+        public Task<IReadOnlyList<ProviderModel>> DiscoverModelsAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProviderValidationResult> ValidateAsync(ProviderConnectionContext c, CancellationToken ct) => throw new NotSupportedException();
     }
     private sealed class ProfileTools(string? root = null) : IRepositoryTools
     {
