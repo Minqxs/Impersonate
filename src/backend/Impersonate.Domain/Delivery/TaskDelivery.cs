@@ -49,6 +49,11 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
+    public string? RemoteName { get; private set; }
+    public string? RemoteRepository { get; private set; }
+    public string? RemoteBranchName { get; private set; }
+    public string? PushedCommitSha { get; private set; }
+    public DateTimeOffset? PushedAtUtc { get; private set; }
     public string ValidationSummaryJson { get; private set; } = "[]";
     public Guid? ClaimId { get; private set; }
     public DateTimeOffset? ClaimedAtUtc { get; private set; }
@@ -174,7 +179,19 @@ public sealed class TaskDelivery
         CommitSha = Required(commitSha, 64);
         Set(TaskDeliveryStatus.Committed, at);
     }
-    public void RecordPushed(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.Committed, TaskDeliveryStatus.Pushed, at);
+    public void RecordPushed(string remoteName, string remoteRepository, string remoteBranchName, string pushedCommitSha, DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.Committed);
+        var commit = Required(pushedCommitSha, 64);
+        if (!string.Equals(commit, CommitSha, StringComparison.OrdinalIgnoreCase)) throw Invalid("Pushed commit must match the approved delivery commit.");
+        RemoteName = Required(remoteName, 50);
+        RemoteRepository = Required(remoteRepository, 300);
+        RemoteBranchName = Required(remoteBranchName, 250);
+        PushedCommitSha = commit;
+        PushedAtUtc = at ?? DateTimeOffset.UtcNow;
+        Set(TaskDeliveryStatus.Pushed, PushedAtUtc);
+    }
+    public TaskDeliveryStatus? RecoveryStatus { get; private set; }
     public void RecordPullRequestOpen(string provider, string repository, long number, string safeUrl, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Pushed);
@@ -196,6 +213,7 @@ public sealed class TaskDelivery
     public void Fail(string code, string message, DateTimeOffset? at = null)
     {
         EnsureActive();
+        RecoveryStatus = Status;
         FailureCode = Required(code, 100);
         FailureMessage = Required(message, 1000);
         Set(TaskDeliveryStatus.Failed, at, true);
@@ -203,6 +221,7 @@ public sealed class TaskDelivery
     public void Block(string code, string message, DateTimeOffset? at = null)
     {
         EnsureActive();
+        RecoveryStatus = Status;
         FailureCode = Required(code, 100);
         FailureMessage = Required(message, 1000);
         Set(TaskDeliveryStatus.Blocked, at, true);
@@ -211,10 +230,13 @@ public sealed class TaskDelivery
     {
         if (Status is not (TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked))
             throw Invalid("Only failed or blocked delivery can recover.");
+        var resume = RecoveryStatus ?? TaskDeliveryStatus.Pending;
+        if (resume is TaskDeliveryStatus.Merged or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled) throw Invalid("Recovery checkpoint is invalid.");
         FailureCode = null;
         FailureMessage = null;
+        RecoveryStatus = null;
         CompletedAtUtc = null;
-        Set(TaskDeliveryStatus.Pending, at);
+        Set(resume, at);
     }
     public void Cancel(DateTimeOffset? at = null)
     {

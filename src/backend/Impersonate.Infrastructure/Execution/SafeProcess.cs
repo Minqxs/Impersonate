@@ -31,6 +31,7 @@ internal sealed class SafeProcess(IChildProcessEnvironmentBuilder environments, 
             StartInfo = start
         };
         var output = new StringBuilder();
+        var outputGate = new object();
         process.OutputDataReceived += (_, e) => Append(e.Data);
         process.ErrorDataReceived += (_, e) => Append(e.Data);
         try
@@ -56,8 +57,10 @@ internal sealed class SafeProcess(IChildProcessEnvironmentBuilder environments, 
         try
         {
             await process.WaitForExitAsync(linked.Token);
+            process.WaitForExit();
             logger.LogDebug("Sanitized child process exited: {Executable}; exit code {ExitCode}; timeout false.", executable, process.ExitCode);
-            return new(process.ExitCode == 0, false, output.ToString(), false, process.ExitCode);
+            lock (outputGate)
+                return new(process.ExitCode == 0, false, output.ToString(), false, process.ExitCode);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !ct.IsCancellationRequested)
         {
@@ -75,10 +78,15 @@ internal sealed class SafeProcess(IChildProcessEnvironmentBuilder environments, 
 
         void Append(string? line)
         {
-            if (line is null || output.Length >= outputLimit)
-                return;
-            var remaining = outputLimit - output.Length;
-            output.AppendLine(line.Length <= remaining ? line : line[..remaining]);
+            if (line is null) return;
+            lock (outputGate)
+            {
+                if (output.Length >= outputLimit) return;
+                var remaining = outputLimit - output.Length;
+                var take = Math.Min(line.Length, remaining);
+                if (take > 0) output.Append(line.AsSpan(0, take));
+                if (output.Length < outputLimit) output.AppendLine();
+            }
         }
     }
 }

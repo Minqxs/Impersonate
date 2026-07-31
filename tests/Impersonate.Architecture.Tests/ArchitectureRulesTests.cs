@@ -153,6 +153,8 @@ public sealed class ArchitectureRulesTests
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.LocalTargetRepositoryDeliveryService"));
         AssertAssignable<Application.Delivery.IDeliveryValidationService>(
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.ConservativeDeliveryValidationService"));
+        AssertAssignable<Application.Delivery.ITaskDeliveryPushService>(
+            RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.TaskDeliveryPushService"));
         Assert.DoesNotContain(infrastructureAssembly.GetTypes(), type =>
             type != typeof(Application.Delivery.IPullRequestGateway)
             && typeof(Application.Delivery.IPullRequestGateway).IsAssignableFrom(type));
@@ -171,6 +173,15 @@ public sealed class ArchitectureRulesTests
                 reference => reference.Equals(forbiddenReference, StringComparison.Ordinal)
                     || reference.StartsWith(forbiddenReference + ".", StringComparison.Ordinal));
         }
+    }
+
+    [Fact]
+    public void Delivery_push_never_forces_or_creates_pull_requests()
+    {
+        var source = File.ReadAllText(Path.Combine(BackendRoot, "Impersonate.Infrastructure", "Delivery", "TaskDeliveryPushService.cs"));
+        Assert.DoesNotContain("--force", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IPullRequestGateway", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("RecordPullRequestOpen", source, StringComparison.Ordinal);
     }
 
     private static void AssertAssignable<TPort>(Type implementation)

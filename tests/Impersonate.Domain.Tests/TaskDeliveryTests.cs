@@ -16,7 +16,7 @@ public sealed class TaskDeliveryTests
         delivery.RecordPatchApplied();
         delivery.RecordValidated();
         delivery.RecordCommitted("abc123");
-        delivery.RecordPushed();
+        delivery.RecordPushed("origin", "owner/repo", "feature/task-1", "abc123");
         delivery.RecordPullRequestOpen("GitHub", "owner/repo", 12, "https://github.com/owner/repo/pull/12");
         delivery.AwaitMerge();
         delivery.MarkMerged();
@@ -72,6 +72,26 @@ public sealed class TaskDeliveryTests
         var delivery = Create();
         delivery.StartPreparing();
         Assert.Throws<InvalidOperationException>(() => delivery.RecordBranchPrepared("feature/task"));
+    }
+
+    [Fact]
+    public void Push_identity_must_match_the_approved_commit()
+    {
+        var delivery = Create();
+        delivery.StartPreparing(); delivery.RecordDeliveryBase("base"); delivery.RecordBranchPrepared("feature/task");
+        delivery.RecordPatchApplied(); delivery.RecordValidated(); delivery.RecordCommitted("approved");
+        Assert.Throws<InvalidOperationException>(() => delivery.RecordPushed("origin", "owner/repo", "feature/task", "different"));
+    }
+
+    [Fact]
+    public void Recovery_resumes_the_pre_failure_checkpoint()
+    {
+        var delivery = Create();
+        delivery.StartPreparing(); delivery.RecordDeliveryBase("base"); delivery.RecordBranchPrepared("feature/task");
+        delivery.RecordPatchApplied(); delivery.RecordValidated(); delivery.RecordCommitted("approved");
+        delivery.Block("delivery_push_failed", "Push failed.");
+        delivery.Recover();
+        Assert.Equal(TaskDeliveryStatus.Committed, delivery.Status);
     }
 
     private static TaskDelivery Create() => TaskDelivery.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, "base", "artifact:patch", "patch", Guid.NewGuid());

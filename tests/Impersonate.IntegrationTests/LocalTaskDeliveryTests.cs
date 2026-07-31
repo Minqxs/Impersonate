@@ -62,6 +62,44 @@ public sealed class LocalTaskDeliveryTests
             Assert.Equal("2", Git(root, $"--git-dir={cache}", "rev-list", "--count", result.Value.BranchName).Trim());
             Assert.Equal("2", Git(root, $"--git-dir={cache}", "rev-list", "--count", secondResult.Value.BranchName).Trim());
             Assert.True(repository.SaveCount >= 4);
+
+            typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, "https://github.com/owner/repository");
+            var push = new TaskDeliveryPushService(new ProjectRepository(project), repository, process, options);
+            var pushed = await push.PushAsync(delivery, default);
+            var pushedAgain = await push.PushAsync(delivery, default);
+            var secondPushed = await new TaskDeliveryPushService(new ProjectRepository(project), new DeliveryRepository(second), process, options).PushAsync(second, default);
+            Assert.True(pushed.Succeeded, $"{pushed.Code}: {pushed.Error}");
+            Assert.True(pushedAgain.Succeeded);
+            Assert.True(pushedAgain.Value!.Recovered);
+            Assert.True(secondPushed.Succeeded);
+            Assert.Equal(result.Value.CommitSha, Git(source, "rev-parse", result.Value.BranchName).Trim());
+            Assert.Equal(secondResult.Value.CommitSha, Git(source, "rev-parse", secondResult.Value.BranchName).Trim());
+            Assert.Equal(TaskDeliveryStatus.Pushed, delivery.Status);
+
+            typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, source);
+            var recoveredDelivery = TaskDelivery.Create(project.Id, delivery.PipelineRunId, Guid.NewGuid(), 3, baseSha, "artifact:patch", patchSha, Guid.NewGuid());
+            var recoveredHandoff = handoff with { PlannedTaskId = recoveredDelivery.PlannedTaskId, TaskSequence = 3, Title = "Recover pushed branch", ApprovedReviewDecisionId = recoveredDelivery.ApprovedReviewDecisionId };
+            var recoveredRepository = new DeliveryRepository(recoveredDelivery);
+            var recoveredLocal = await new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), recoveredRepository, new ArtifactStore(patch), new Validation(), registry, process, options).DeliverApprovedPatchAsync(recoveredDelivery, recoveredHandoff, default);
+            Assert.True(recoveredLocal.Succeeded);
+            Git(cache, "push", "origin", $"{recoveredLocal.Value!.BranchName}:refs/heads/{recoveredLocal.Value.BranchName}");
+            typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, "https://github.com/owner/repository");
+            var recoveredPush = await new TaskDeliveryPushService(new ProjectRepository(project), recoveredRepository, process, options).PushAsync(recoveredDelivery, default);
+            Assert.True(recoveredPush.Succeeded);
+            Assert.True(recoveredPush.Value!.Recovered);
+
+            typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, source);
+            var conflictDelivery = TaskDelivery.Create(project.Id, delivery.PipelineRunId, Guid.NewGuid(), 4, baseSha, "artifact:patch", patchSha, Guid.NewGuid());
+            var conflictHandoff = handoff with { PlannedTaskId = conflictDelivery.PlannedTaskId, TaskSequence = 4, Title = "Conflict branch", ApprovedReviewDecisionId = conflictDelivery.ApprovedReviewDecisionId };
+            var conflictRepository = new DeliveryRepository(conflictDelivery);
+            var conflictLocal = await new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), conflictRepository, new ArtifactStore(patch), new Validation(), registry, process, options).DeliverApprovedPatchAsync(conflictDelivery, conflictHandoff, default);
+            Assert.True(conflictLocal.Succeeded);
+            Git(source, "branch", conflictLocal.Value!.BranchName, baseSha);
+            typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, "https://github.com/owner/repository");
+            var conflictPush = await new TaskDeliveryPushService(new ProjectRepository(project), conflictRepository, process, options).PushAsync(conflictDelivery, default);
+            Assert.False(conflictPush.Succeeded);
+            Assert.Equal("delivery_remote_branch_conflict", conflictPush.Code);
+            Assert.Equal(TaskDeliveryStatus.Committed, conflictDelivery.Status);
         }
         finally
         {
