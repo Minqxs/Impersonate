@@ -155,9 +155,8 @@ public sealed class ArchitectureRulesTests
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.ConservativeDeliveryValidationService"));
         AssertAssignable<Application.Delivery.ITaskDeliveryPushService>(
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.TaskDeliveryPushService"));
-        Assert.DoesNotContain(infrastructureAssembly.GetTypes(), type =>
-            type != typeof(Application.Delivery.IPullRequestGateway)
-            && typeof(Application.Delivery.IPullRequestGateway).IsAssignableFrom(type));
+        AssertAssignable<Application.Delivery.IPullRequestGateway>(
+            RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.Mcp.GitHubMcpPullRequestGateway"));
     }
 
     private static void AssertReferences(Assembly assembly, IReadOnlyCollection<string> forbidden)

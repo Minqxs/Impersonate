@@ -1,4 +1,21 @@
 import { Alert, Box, Stack, Typography } from '@mui/material';
-import { useRunDetail } from '../layouts/runDetailContext';
 import { StateChip } from '../components/StateChip';
-export function RunDelivery(){const{run}=useRunDetail();return <Stack spacing={2}><Typography variant="h5">Delivery</Typography><Alert severity="info">Approved tasks are prepared, validated, committed, and pushed independently. Pull-request creation and merge reconciliation remain unavailable.</Alert>{run.tasks.length===0?<Alert severity="info">No task delivery state is available.</Alert>:run.tasks.map(task=><Box key={task.id} border={1} borderColor="divider" borderRadius={1} p={2}><Stack direction="row" justifyContent="space-between"><Typography fontWeight={600}>{task.sequence}. {task.title}</Typography><StateChip value={task.delivery?.status??(task.deliveryEligible?'Eligible':'Blocked')}/></Stack>{(task.deliveryBlockingDependencyIds?.length??0)>0&&<Typography>Waiting for merged dependencies: {task.deliveryBlockingDependencyIds?.join(', ')}</Typography>}{task.delivery?.branchName&&<Typography>Branch: {task.delivery.branchName}</Typography>}{task.delivery?.commitSha&&<Typography>Commit: {task.delivery.commitSha}</Typography>}{task.delivery?.remoteBranchName&&<Typography>Remote: {task.delivery.remoteRepository} · {task.delivery.remoteBranchName}</Typography>}{task.delivery?.pullRequestNumber&&<Typography>Pull request: {task.delivery.pullRequestRepository} #{task.delivery.pullRequestNumber}</Typography>}{task.delivery?.failureMessage&&<Alert severity="error">{task.delivery.failureCode}: {task.delivery.failureMessage}</Alert>}</Box>)}</Stack>}
+import { useRunDetail } from '../layouts/runDetailContext';
+
+export function RunDelivery() {
+  const { run } = useRunDetail();
+  return <Stack spacing={2}>
+    <Typography variant="h5">Delivery</Typography>
+    <Alert severity="info">Approved tasks are prepared, validated, committed, pushed, and opened as focused draft pull requests independently. Merge reconciliation remains unavailable.</Alert>
+    {run.tasks.length === 0 ? <Alert severity="info">No task delivery state is available.</Alert> : run.tasks.map(task =>
+      <Box key={task.id} border={1} borderColor="divider" borderRadius={1} p={2}>
+        <Stack direction="row" justifyContent="space-between"><Typography fontWeight={600}>{task.sequence}. {task.title}</Typography><StateChip value={task.delivery?.status ?? (task.deliveryEligible ? 'Eligible' : 'Blocked')} /></Stack>
+        {(task.deliveryBlockingDependencyIds?.length ?? 0) > 0 && <Typography>Waiting for merged dependencies: {task.deliveryBlockingDependencyIds?.join(', ')}</Typography>}
+        {task.delivery?.branchName && <Typography>Branch: {task.delivery.branchName}</Typography>}
+        {task.delivery?.commitSha && <Typography>Commit: {task.delivery.commitSha}</Typography>}
+        {task.delivery?.remoteBranchName && <Typography>Remote: {task.delivery.remoteRepository} / {task.delivery.remoteBranchName}</Typography>}
+        {task.delivery?.pullRequestNumber && <Typography>Pull request: {task.delivery.pullRequestRepository} #{task.delivery.pullRequestNumber}</Typography>}
+        {task.delivery?.failureMessage && <Alert severity="error">{task.delivery.failureCode}: {task.delivery.failureMessage}</Alert>}
+      </Box>)}
+  </Stack>;
+}

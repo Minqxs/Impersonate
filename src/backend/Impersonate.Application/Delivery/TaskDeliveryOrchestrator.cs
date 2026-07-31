@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Application.Delivery;
 
-internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
+internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IPullRequestGateway pullRequests, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -20,14 +20,17 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
             if (!handoff.Succeeded) { delivery.Block(handoff.Code ?? "delivery_handoff_invalid", handoff.Error ?? "Delivery handoff is invalid."); delivery.ReleaseClaim(); }
             else
             {
-                var result = await target.DeliverApprovedPatchAsync(delivery, handoff.Value!, ct);
-                if (!result.Succeeded) { delivery.Block(result.Code ?? "delivery_failed", result.Error ?? "Local delivery preparation failed safely."); delivery.ReleaseClaim(); }
-                else
+                if (delivery.Status != Domain.Delivery.TaskDeliveryStatus.Pushed)
                 {
-                    var pushed = await push.PushAsync(delivery, ct);
-                    if (!pushed.Succeeded) delivery.Block(pushed.Code ?? "delivery_push_failed", pushed.Error ?? "Task branch could not be pushed safely.");
-                    delivery.ReleaseClaim();
+                    var local = await target.DeliverApprovedPatchAsync(delivery, handoff.Value!, ct);
+                    if (!local.Succeeded) { delivery.Block(local.Code ?? "delivery_failed", local.Error ?? "Local delivery preparation failed safely."); delivery.ReleaseClaim(); return true; }
                 }
+                var pushed = await push.PushAsync(delivery, ct);
+                if (!pushed.Succeeded) { delivery.Block(pushed.Code ?? "delivery_push_failed", pushed.Error ?? "Task branch could not be pushed safely."); delivery.ReleaseClaim(); return true; }
+                var opened = await pullRequests.OpenAsync(delivery, handoff.Value!, ct);
+                if (!opened.Succeeded) delivery.Block(opened.Code ?? "github_mcp_failed", opened.Error ?? "Pull request could not be opened safely.");
+                else { var pr = opened.Value!; delivery.RecordPullRequestOpen(pr.Provider, pr.Repository, pr.Number, pr.SafeUrl, pr.HeadBranch, pr.BaseBranch, pr.ObservedHeadSha, pr.CreatedAtUtc); delivery.AwaitMerge(); }
+                delivery.ReleaseClaim();
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { delivery.ReleaseClaim(); throw; }

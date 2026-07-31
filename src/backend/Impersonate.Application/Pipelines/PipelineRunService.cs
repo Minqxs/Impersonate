@@ -262,7 +262,7 @@ internal sealed class PipelineRunService(IProjectRepository projects, IPipelineR
         var byTask = run.Deliveries.ToDictionary(x => x.PlannedTaskId);
         var blockers = dependencies.Where(id => !byTask.TryGetValue(id, out var delivery) || delivery.Status != Domain.Delivery.TaskDeliveryStatus.Merged).ToList();
         byTask.TryGetValue(task.Id, out var current);
-        var deliveryDto = current is null ? null : new TaskDeliveryDto(current.Id, current.Status, current.BranchName, current.CommitSha, current.RemoteName, current.RemoteRepository, current.RemoteBranchName, current.PushedCommitSha, current.PushedAtUtc, current.PullRequestProvider, current.PullRequestRepository, current.PullRequestNumber, current.PullRequestUrl, current.FailureCode, current.FailureMessage);
+        var deliveryDto = current is null ? null : new TaskDeliveryDto(current.Id, current.Status, current.BranchName, current.CommitSha, current.RemoteName, current.RemoteRepository, current.RemoteBranchName, current.PushedCommitSha, current.PushedAtUtc, current.PullRequestProvider, current.PullRequestRepository, current.PullRequestNumber, current.PullRequestUrl, current.PullRequestHeadBranch, current.PullRequestBaseBranch, current.PullRequestObservedHeadSha, current.PullRequestCreatedAtUtc, current.FailureCode, current.FailureMessage);
         var eligible = run.Status == PipelineRunStatus.ReadyForDelivery && run.LoopRun.CurrentStage == LoopStage.Committing && task.Status == PlannedTaskStatus.Approved && current is null && blockers.Count == 0;
         return new(task.Id, task.Sequence, task.Title, task.Description, task.AcceptanceCriteria, task.Status, task.RevisionCount, task.MaximumRevisionAttempts,
             task.CoderModelOverrideId, task.ReviewerModelOverrideId,

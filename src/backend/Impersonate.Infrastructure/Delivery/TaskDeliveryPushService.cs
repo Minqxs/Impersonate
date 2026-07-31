@@ -14,9 +14,7 @@ internal sealed class TaskDeliveryPushService(IProjectRepository projects, ITask
 
     public async Task<DeliveryOperationResult<TaskDeliveryPushResult>> PushAsync(TaskDelivery delivery, CancellationToken ct)
     {
-        if (delivery.Status == TaskDeliveryStatus.Pushed)
-            return Existing(delivery, true);
-        if (delivery.Status != TaskDeliveryStatus.Committed || string.IsNullOrWhiteSpace(delivery.BranchName) || string.IsNullOrWhiteSpace(delivery.CommitSha))
+        if (delivery.Status is not (TaskDeliveryStatus.Committed or TaskDeliveryStatus.Pushed) || string.IsNullOrWhiteSpace(delivery.BranchName) || string.IsNullOrWhiteSpace(delivery.CommitSha))
             return Fail("delivery_push_state_invalid", "Only a committed delivery with branch and commit identity can be pushed.");
         var project = await projects.GetAsync(delivery.ProjectId, ct);
         if (project is null) return Fail("delivery_project_not_found", "Delivery project was not found.");
@@ -35,6 +33,12 @@ internal sealed class TaskDeliveryPushService(IProjectRepository projects, ITask
             if (!fetch.Succeeded) return Fail(Classify(fetch), "Remote refs could not be refreshed safely.");
             var remote = await RemoteShaAsync(cache, delivery.BranchName, ct);
             if (remote is not null && !string.Equals(remote, delivery.CommitSha, StringComparison.OrdinalIgnoreCase)) return Fail("delivery_remote_branch_conflict", "Remote task branch points to a different commit.");
+            if (delivery.Status == TaskDeliveryStatus.Pushed)
+            {
+                if (remote is null) return Fail("delivery_remote_branch_missing", "Recorded remote task branch no longer exists.");
+                if (!string.Equals(delivery.RemoteRepository, repository, StringComparison.OrdinalIgnoreCase) || !string.Equals(delivery.RemoteBranchName, delivery.BranchName, StringComparison.Ordinal) || !string.Equals(delivery.PushedCommitSha, delivery.CommitSha, StringComparison.OrdinalIgnoreCase)) return Fail("delivery_push_identity_conflict", "Persisted push identity conflicts with the approved delivery.");
+                return Existing(delivery, true);
+            }
             var recovered = remote is not null;
             if (!recovered)
             {
