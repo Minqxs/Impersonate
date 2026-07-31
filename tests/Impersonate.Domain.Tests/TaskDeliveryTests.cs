@@ -11,6 +11,7 @@ public sealed class TaskDeliveryTests
         var delivery = Create();
         Assert.Throws<InvalidOperationException>(() => delivery.RecordCommitted("commit"));
         delivery.StartPreparing();
+        delivery.RecordDeliveryBase("base");
         delivery.RecordBranchPrepared("feature/task-1");
         delivery.RecordPatchApplied();
         delivery.RecordValidated();
@@ -50,6 +51,27 @@ public sealed class TaskDeliveryTests
         var task = Guid.NewGuid();
         Assert.Equal(TaskDelivery.BuildIdempotencyKey(project, run, task, "AA"), TaskDelivery.BuildIdempotencyKey(project, run, task, "aa"));
         Assert.NotEqual(TaskDelivery.BuildIdempotencyKey(project, run, task, "aa"), TaskDelivery.BuildIdempotencyKey(project, run, task, "bb"));
+    }
+
+    [Fact]
+    public void Claim_is_exclusive_until_expiry()
+    {
+        var delivery = Create();
+        var now = DateTimeOffset.UtcNow;
+        delivery.Claim(Guid.NewGuid(), "worker-1", now.AddMinutes(5), now);
+        Assert.Throws<InvalidOperationException>(() => delivery.Claim(Guid.NewGuid(), "worker-2", now.AddMinutes(6), now.AddMinutes(1)));
+        delivery.Claim(Guid.NewGuid(), "worker-2", now.AddMinutes(11), now.AddMinutes(6));
+        Assert.Equal("worker-2", delivery.ClaimOwner);
+        delivery.ReleaseClaim();
+        Assert.Null(delivery.ClaimId);
+    }
+
+    [Fact]
+    public void Branch_requires_a_resolved_delivery_base()
+    {
+        var delivery = Create();
+        delivery.StartPreparing();
+        Assert.Throws<InvalidOperationException>(() => delivery.RecordBranchPrepared("feature/task"));
     }
 
     private static TaskDelivery Create() => TaskDelivery.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, "base", "artifact:patch", "patch", Guid.NewGuid());

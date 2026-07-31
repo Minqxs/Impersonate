@@ -29,6 +29,7 @@ public sealed class TaskDelivery
         get; private set;
     }
     public string SourceBaseCommitSha { get; private set; } = null!;
+    public string? DeliveryBaseCommitSha { get; private set; }
     public string ApprovedPatchArtifactReference { get; private set; } = null!;
     public string ApprovedPatchSha256 { get; private set; } = null!;
     public Guid ApprovedReviewDecisionId
@@ -48,6 +49,11 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
+    public string ValidationSummaryJson { get; private set; } = "[]";
+    public Guid? ClaimId { get; private set; }
+    public DateTimeOffset? ClaimedAtUtc { get; private set; }
+    public DateTimeOffset? ClaimExpiresAtUtc { get; private set; }
+    public string? ClaimOwner { get; private set; }
     public string? PullRequestProvider
     {
         get; private set;
@@ -118,14 +124,50 @@ public sealed class TaskDelivery
     }
 
     public void StartPreparing(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.Pending, TaskDeliveryStatus.Preparing, at);
+    public void Claim(Guid claimId, string owner, DateTimeOffset expiresAt, DateTimeOffset? at = null)
+    {
+        var now = at ?? DateTimeOffset.UtcNow;
+        if (!IsActive || Status is TaskDeliveryStatus.Pushed or TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.AwaitingMerge)
+            throw Invalid("Delivery cannot be claimed in its current state.");
+        if (ClaimExpiresAtUtc > now)
+            throw Invalid("Delivery already has an active claim.");
+        if (claimId == Guid.Empty || expiresAt <= now)
+            throw new ArgumentException("A valid delivery claim is required.");
+        ClaimId = claimId; ClaimOwner = Required(owner, 200); ClaimedAtUtc = now; ClaimExpiresAtUtc = expiresAt; UpdatedAtUtc = now;
+    }
+    public void ReleaseClaim()
+    {
+        ClaimId = null; ClaimOwner = null; ClaimedAtUtc = null; ClaimExpiresAtUtc = null;
+        UpdatedAtUtc = DateTimeOffset.UtcNow;
+    }
+    public void RecordDeliveryBase(string sha, DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.Preparing);
+        var value = Required(sha, 64);
+        if (DeliveryBaseCommitSha is not null && !string.Equals(DeliveryBaseCommitSha, value, StringComparison.OrdinalIgnoreCase)) throw Invalid("Delivery base conflicts with the persisted identity.");
+        DeliveryBaseCommitSha = value; UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+    }
+    public void RecordBranchIntent(string branchName, DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.Preparing);
+        var value = Required(branchName, 250);
+        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal)) throw Invalid("Branch name conflicts with the persisted identity.");
+        BranchName = value; UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+    }
     public void RecordBranchPrepared(string branchName, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Preparing);
-        BranchName = Required(branchName, 250);
+        if (string.IsNullOrWhiteSpace(DeliveryBaseCommitSha)) throw Invalid("Delivery base must be resolved before preparing a branch.");
+        var value = Required(branchName, 250);
+        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal)) throw Invalid("Branch name conflicts with the persisted identity.");
+        BranchName = value;
         Set(TaskDeliveryStatus.BranchPrepared, at);
     }
     public void RecordPatchApplied(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.BranchPrepared, TaskDeliveryStatus.PatchApplied, at);
-    public void RecordValidated(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.PatchApplied, TaskDeliveryStatus.Validated, at);
+    public void RecordValidated(string validationSummaryJson = "[]", DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.PatchApplied); ValidationSummaryJson = Required(validationSummaryJson, 16000); Set(TaskDeliveryStatus.Validated, at);
+    }
     public void RecordCommitted(string commitSha, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Validated);

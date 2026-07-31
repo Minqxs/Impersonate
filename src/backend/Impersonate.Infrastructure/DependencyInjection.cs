@@ -9,6 +9,7 @@ using Impersonate.Infrastructure.Agents.Execution;
 using Impersonate.Infrastructure.Agents.Planner;
 using Impersonate.Infrastructure.Ai;
 using Impersonate.Infrastructure.Execution;
+using Impersonate.Infrastructure.Delivery;
 using Impersonate.Infrastructure.Persistence;
 using Impersonate.Infrastructure.Quality;
 using Microsoft.AspNetCore.DataProtection;
@@ -33,6 +34,9 @@ public static class DependencyInjection
         services.AddSingleton<SafeProcess>();
         services.AddSingleton<IExecutionEnvironmentReadinessService, ExecutionEnvironmentReadinessService>();
         services.AddSingleton<IExecutionArtifactStore, LocalExecutionArtifactStore>();
+        services.AddSingleton<DeliveryWorkspaceRegistry>();
+        services.AddSingleton<IDeliveryValidationService, ConservativeDeliveryValidationService>();
+        services.AddScoped<ITargetRepositoryDeliveryService, LocalTargetRepositoryDeliveryService>();
         services.AddSingleton<RepositoryWorkspaceService>();
         services.AddSingleton<IRepositoryWorkspaceService>(x => x.GetRequiredService<RepositoryWorkspaceService>());
         services.AddSingleton<IRepositoryTools, SafeRepositoryTools>();

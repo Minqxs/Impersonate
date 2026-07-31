@@ -18,8 +18,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 
 | Phase | Scope | Evidence | Status | Remaining gate |
 |---|---|---|---|---|
-| 1 | Delivery domain and handoff contract | `TaskDelivery`, guarded states, coordinator, EF migration, run projection | Complete in this PR | Draft PR review |
-| 2 | Target Git branch/worktree, patch, validation, one commit | Deferred | Not started | Safe target-repository implementation |
+| 1 | Delivery domain and handoff contract | `TaskDelivery`, guarded states, coordinator, EF migration, run projection | Complete in merged PR #40 | None |
+| 2 | Target Git branch/worktree, patch, validation, one commit | `feat/local-task-delivery`, draft PR #43: durable leases, bare cache/worktree isolation, exact patch checks, conservative validation, single-parent commit; 215 backend and 18 frontend tests pass; two-task local acceptance creates distinct branches/commits and replay is idempotent | Draft review | CI, squash merge, then Phase 3 |
 | 3 | Push and remote branch recovery | Deferred | Not started | Credential-safe remote recovery |
 | 4 | GitHub MCP pull-request creation | Deferred | Not started | Provider adapter and idempotent PR recovery |
 | 5 | Merge reconciliation and dependency unlocking | Deferred | Not started | External merge observation |
@@ -33,7 +33,7 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 - Same-patch replay is idempotent; changed-patch replay fails explicitly.
 - Handoff validates run, loop, claim, approval, patch, review, source, and routing evidence.
 - Run details expose safe delivery readiness and state without an action button.
-- No target Git process or GitHub delivery call exists.
+- Phase 2 permits local target Git preparation only. Push, remote branch creation, GitHub delivery calls, and target pull requests remain impossible.
 - No paid provider call is used by automated tests.
 
 ## Recovery and future completion
