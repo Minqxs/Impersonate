@@ -4,7 +4,7 @@ Impersonate is a project-aware, personality-guided engineering system. The repos
 
 ## Current milestone
 
-Repository-aware planning, evidence-based model routing, recoverable per-task Git branch push, and focused draft pull-request creation through the official GitHub MCP server are implemented. Merge reconciliation remains deferred.
+Repository-aware planning, evidence-based model routing, recoverable per-task Git delivery, focused draft pull-request creation through the official GitHub MCP server, and merge reconciliation are implemented.
 
 ## Technology stack
 
@@ -81,7 +81,7 @@ Configuration health checks only stored repository and branch configuration; the
 
 ## Current non-goals
 
-Merge reconciliation, private-repository authentication, sessions, schedules, and real repository health checks remain deferred.
+Private-repository authentication, sessions, schedules, and real repository health checks remain deferred.
 
 ## Planner configuration
 
@@ -106,7 +106,7 @@ The default policy allows three revision attempts after the initial coding attem
 
 Open **AI Providers** to connect Anthropic, OpenAI, Google Gemini, or OpenRouter. Credentials are encrypted and never returned. Validate a connection and synchronise models; Impersonate routes Planner, Coder, and Reviewer with role-specific compatibility, versioned capability metadata, persisted score components, ranked alternatives, and optional Reviewer diversity. Every pending task is previewed and task-level overrides are capability-validated. Historical outcomes are not scored below the minimum sample size of 10. Environment Anthropic configuration remains a legacy Planner fallback. API and Worker must share `Ai:DataProtectionKeyPath`.
 
-Execution clones the configured public GitHub HTTPS repository beneath `Execution:WorkspaceRoot` (development default `%LOCALAPPDATA%\Impersonate\workspaces`) and stores opaque patch/report artifacts beneath `Execution:ArtifactRoot`. Child processes inherit only explicit Windows/core and proxy/certificate allowlists; credentials, tokens, API keys, and arbitrary application variables are excluded. A preparation outage moves the run to `WaitingForInfrastructure`; after repair, **Retry execution** resumes the same unresolved task without consuming an attempt. Production requires explicit roots. Commands and paths are restricted as described in [execution security](docs/architecture/execution-security.md). Milestone 6 prepares one validated branch and commit per approved task, safely pushes that exact commit, then creates or recovers one focused draft pull request through an explicitly enabled and repository-allowlisted official GitHub MCP server. Private-repository authentication and merge reconciliation are not implemented.
+Execution clones the configured public GitHub HTTPS repository beneath `Execution:WorkspaceRoot` (development default `%LOCALAPPDATA%\Impersonate\workspaces`) and stores opaque patch/report artifacts beneath `Execution:ArtifactRoot`. Child processes inherit only explicit Windows/core and proxy/certificate allowlists; credentials, tokens, API keys, and arbitrary application variables are excluded. A preparation outage moves the run to `WaitingForInfrastructure`; after repair, **Retry execution** resumes the same unresolved task without consuming an attempt. Production requires explicit roots. Commands and paths are restricted as described in [execution security](docs/architecture/execution-security.md). Milestone 6 prepares, pushes, and opens one focused draft pull request per approved task, then reconciles external merge state through the same allowlisted official GitHub MCP server. A merged delivery unlocks dependent work; the run completes only after every approved delivery merges. Private-repository authentication is not implemented.
 
 Created run details use project-scoped AI readiness and preview the feature-specific provider, model, and routing explanation before enabling **Start Planning**. The global `/api/planner/readiness` endpoint reports legacy environment fallback health only.
 

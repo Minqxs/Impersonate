@@ -40,6 +40,22 @@ public sealed class TaskDeliveryCoordinatorTests
     }
 
     [Fact]
+    public async Task Run_completes_only_after_every_approved_delivery_is_merged()
+    {
+        var fixture = Fixture.Create(twoTasks: true);
+        var first = (await fixture.Coordinator.GetOrCreateAsync(fixture.Run.ProjectId, fixture.Run.Id, fixture.Run.Tasks[0].Id, default)).Value!;
+        var second = (await fixture.Coordinator.GetOrCreateAsync(fixture.Run.ProjectId, fixture.Run.Id, fixture.Run.Tasks[1].Id, default)).Value!;
+        var navigation = (List<TaskDelivery>)typeof(PipelineRun).GetField("deliveries", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(fixture.Run)!;
+        navigation.AddRange([first, second]);
+        Merge(first);
+        Assert.Throws<InvalidOperationException>(() => fixture.Run.CompleteDelivery());
+        Merge(second);
+        fixture.Run.CompleteDelivery();
+        Assert.Equal(PipelineRunStatus.Completed, fixture.Run.Status);
+        Assert.Equal(LoopRunStatus.Completed, fixture.Run.LoopRun.Status);
+    }
+
+    [Fact]
     public async Task Changed_patch_cannot_reuse_existing_delivery()
     {
         var fixture = Fixture.Create();

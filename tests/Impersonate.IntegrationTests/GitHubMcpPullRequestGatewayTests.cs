@@ -77,6 +77,27 @@ public sealed class GitHubMcpPullRequestGatewayTests
         Assert.False(result.Succeeded); Assert.Equal("github_mcp_malformed_response", result.Code); Assert.Equal(["list_pull_requests"], fixture.Mcp.Calls);
     }
 
+    [Theory]
+    [InlineData("open", false, PullRequestExternalState.Open)]
+    [InlineData("closed", false, PullRequestExternalState.Closed)]
+    [InlineData("closed", true, PullRequestExternalState.Merged)]
+    public async Task Reconciliation_reads_exact_pr_state(string state, bool merged, PullRequestExternalState expected)
+    {
+        var fixture = new Fixture(); fixture.Delivery.RecordPullRequestOpen("GitHubMCP:fake-official", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "impersonate/task", "main", fixture.Delivery.CommitSha!, DateTimeOffset.UtcNow); fixture.Delivery.AwaitMerge();
+        fixture.Mcp.Results.Enqueue(Json(PrObject(12, fixture.Delivery.CommitSha!, state, merged)));
+        var result = await fixture.Gateway.ReadAsync(fixture.Delivery, default);
+        Assert.True(result.Succeeded, result.Error); Assert.Equal(expected, result.Value!.State); Assert.Equal(["pull_request_read"], fixture.Mcp.Calls);
+    }
+
+    [Fact]
+    public async Task Reconciliation_blocks_changed_head_identity()
+    {
+        var fixture = new Fixture(); fixture.Delivery.RecordPullRequestOpen("GitHubMCP:fake-official", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "impersonate/task", "main", fixture.Delivery.CommitSha!, DateTimeOffset.UtcNow); fixture.Delivery.AwaitMerge();
+        fixture.Mcp.Results.Enqueue(Json(PrObject(12, "unapproved")));
+        var result = await fixture.Gateway.ReadAsync(fixture.Delivery, default);
+        Assert.False(result.Succeeded); Assert.Equal("delivery_pull_request_head_changed", result.Code);
+    }
+
     private sealed class Fixture
     {
         public Project Project { get; } = Project.Create("Test", null, "https://github.com/owner/repo", "main");
@@ -117,5 +138,5 @@ public sealed class GitHubMcpPullRequestGatewayTests
     private static ModelSelectionEvidence Evidence() => new(Guid.NewGuid(), "AutomaticRouting", 1, "test", "v1", "[]");
     private static JsonElement Json<T>(T value) => JsonSerializer.SerializeToElement(value);
     private static JsonElement Pr(long number, string sha) => Json(PrObject(number, sha));
-    private static object PrObject(long number, string sha, string state = "open") => new { number, html_url = $"https://github.com/owner/repo/pull/{number}", state, merged = false, head = new { @ref = "impersonate/task", sha }, @base = new { @ref = "main" }, created_at = "2026-07-31T00:00:00Z" };
+    private static object PrObject(long number, string sha, string state = "open", bool merged = false) => new { number, html_url = $"https://github.com/owner/repo/pull/{number}", state, merged, head = new { @ref = "impersonate/task", sha }, @base = new { @ref = "main" }, created_at = "2026-07-31T00:00:00Z", merge_commit_sha = merged ? "merge-sha" : null };
 }
