@@ -40,7 +40,13 @@ internal sealed class RemoteOfficialGitHubMcpClient(HttpClient http, IOptions<Gi
         var id = Interlocked.Increment(ref nextId);
         using var request = Request(new { jsonrpc = "2.0", id, method, @params = parameters });
         using var response = await http.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(response.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "github_mcp_authentication_unavailable" : "github_mcp_unavailable");
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(response.StatusCode switch
+        {
+            System.Net.HttpStatusCode.Unauthorized => "github_mcp_authentication_unavailable",
+            System.Net.HttpStatusCode.Forbidden => "github_mcp_permission_denied",
+            System.Net.HttpStatusCode.NotFound => "github_mcp_pull_request_not_found",
+            _ => "github_mcp_unavailable"
+        });
         if (initialize && response.Headers.TryGetValues("Mcp-Session-Id", out var values)) sessionId = values.SingleOrDefault();
         var payload = await response.Content.ReadAsStringAsync(ct);
         return McpJson.Result(payload, id);

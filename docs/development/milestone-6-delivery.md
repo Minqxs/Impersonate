@@ -21,8 +21,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 | 1 | Delivery domain and handoff contract | `TaskDelivery`, guarded states, coordinator, EF migration, run projection | Complete in merged PR #40 | None |
 | 2 | Target Git branch/worktree, patch, validation, one commit | PR #43 squash-merged as `f13de39d8b2deea8804cc5bbd80051b052689a6b`; 215 backend and 18 frontend tests passed; two-task local acceptance created distinct branches/commits and replay was idempotent | Complete | None |
 | 3 | Push and remote branch recovery | PR #44 squash-merged as `0f2c056678455ea095230438523a1010e14e3f14`; explicit non-force refspec, matching-ref/lost-response recovery, conflict blocking, safe remote identity persistence; 218 backend and 18 frontend tests passed | Complete | None |
-| 4 | GitHub MCP pull-request creation | PR #45 on `feat/github-mcp-task-pull-requests`: official remote/local MCP transports, exact three-tool allowlist, repository allowlist, draft PR creation/recovery, safe identity persistence; 223 backend and 18 frontend tests pass; backend/frontend CI pass | Ready to merge | Squash merge, then Phase 5 |
-| 5 | Merge reconciliation and dependency unlocking | Deferred | Not started | External merge observation |
+| 4 | GitHub MCP pull-request creation | PR #45 squash-merged as `462c8cba7e937dfb08a86406efa2194b709fc337`; official remote/local MCP transports, exact three-tool allowlist, repository allowlist, draft PR creation/recovery, safe identity persistence; 223 backend and 18 frontend tests passed | Complete | None |
+| 5 | Merge reconciliation and dependency unlocking | `feat/task-delivery-reconciliation`: dedicated leased worker, exact PR identity/head verification, open/merged/closed handling, dependent unlocking, run completion; 231 backend and 18 frontend tests pass | Review complete | Commit, draft PR, CI, and squash merge |
 | 6 | Full Milestone 6 acceptance | Deferred | Not started | Live end-to-end evidence |
 
 ## Foundation gates

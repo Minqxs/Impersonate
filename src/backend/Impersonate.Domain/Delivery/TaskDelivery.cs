@@ -136,7 +136,7 @@ public sealed class TaskDelivery
     public void Claim(Guid claimId, string owner, DateTimeOffset expiresAt, DateTimeOffset? at = null)
     {
         var now = at ?? DateTimeOffset.UtcNow;
-        if (!IsActive || Status is TaskDeliveryStatus.Pushed or TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.AwaitingMerge)
+        if (!IsActive)
             throw Invalid("Delivery cannot be claimed in its current state.");
         if (ClaimExpiresAtUtc > now)
             throw Invalid("Delivery already has an active claim.");

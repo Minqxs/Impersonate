@@ -8,5 +8,6 @@ public interface ITaskDeliveryRepository
     Task<IReadOnlyList<TaskDelivery>> ListByRunAsync(Guid projectId, Guid runId, CancellationToken cancellationToken);
     Task AddAsync(TaskDelivery delivery, CancellationToken cancellationToken);
     Task<TaskDelivery?> ClaimNextPendingAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken cancellationToken);
+    Task<TaskDelivery?> ClaimNextReconciliationAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken cancellationToken) => Task.FromResult<TaskDelivery?>(null);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

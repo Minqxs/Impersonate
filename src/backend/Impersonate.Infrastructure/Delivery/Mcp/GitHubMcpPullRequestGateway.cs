@@ -48,6 +48,37 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         }
     }
 
+    public async Task<DeliveryOperationResult<PullRequestObservation>> ReadAsync(TaskDelivery delivery, CancellationToken ct)
+    {
+        if (!string.Equals(delivery.PullRequestProvider, $"GitHubMCP:{mcp.ServerIdentity}", StringComparison.Ordinal))
+            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_server_not_allowed", "Recorded pull request belongs to a different MCP server.");
+        if (delivery.Status is not (TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.AwaitingMerge) || delivery.PullRequestNumber is null || string.IsNullOrWhiteSpace(delivery.PullRequestRepository))
+            return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_reconciliation_state_invalid", "An open pull-request identity is required for reconciliation.");
+        var parts = delivery.PullRequestRepository.Split('/');
+        if (parts.Length != 2 || !options.AllowedRepositories.Contains(delivery.PullRequestRepository, StringComparer.OrdinalIgnoreCase))
+            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP reconciliation.");
+        try
+        {
+            var value = await mcp.CallToolAsync("pull_request_read", new { method = "get", owner = parts[0], repo = parts[1], pullNumber = delivery.PullRequestNumber.Value }, ct);
+            var pull = Parse(value);
+            if (pull.Number != delivery.PullRequestNumber || !string.Equals(pull.HeadBranch, delivery.PullRequestHeadBranch, StringComparison.Ordinal) || !string.Equals(pull.BaseBranch, delivery.PullRequestBaseBranch, StringComparison.Ordinal))
+                return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_pull_request_identity_changed", "Pull-request identity no longer matches the recorded delivery.");
+            if (!string.Equals(pull.HeadSha, delivery.CommitSha, StringComparison.OrdinalIgnoreCase))
+                return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_pull_request_head_changed", "Pull-request head does not match the approved delivery commit.");
+            var state = pull.Merged ? PullRequestExternalState.Merged
+                : string.Equals(pull.State, "closed", StringComparison.OrdinalIgnoreCase) ? PullRequestExternalState.Closed
+                : string.Equals(pull.State, "open", StringComparison.OrdinalIgnoreCase) ? PullRequestExternalState.Open
+                : throw new InvalidOperationException("github_mcp_malformed_response");
+            return DeliveryOperationResult<PullRequestObservation>.Ok(new($"GitHubMCP:{mcp.ServerIdentity}", delivery.PullRequestRepository, pull.Number, pull.HeadBranch, pull.BaseBranch, pull.HeadSha, state, pull.MergeCommitSha));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            var code = ex.Message.StartsWith("github_mcp_", StringComparison.Ordinal) ? ex.Message : "github_mcp_failed";
+            return DeliveryOperationResult<PullRequestObservation>.Fail(code, "GitHub MCP pull-request reconciliation failed safely.");
+        }
+    }
+
     private async Task<PullRequest?> FindAsync(string owner, string repo, string baseBranch, string headBranch, CancellationToken ct)
     {
         var result = await mcp.CallToolAsync("list_pull_requests", new { owner, repo, state = "all", head = $"{owner}:{headBranch}", @base = baseBranch, perPage = 20 }, ct);
@@ -84,11 +115,11 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         var number = Long(value, "number") ?? throw new InvalidOperationException("github_mcp_malformed_response");
         var head = value.TryGetProperty("head", out var h) ? h : default; var @base = value.TryGetProperty("base", out var b) ? b : default;
         if (!DateTimeOffset.TryParse(Text(value, "created_at") ?? Text(value, "createdAt"), out var created)) throw new InvalidOperationException("github_mcp_malformed_response");
-        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", created);
+        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"));
     }
     private static string? Text(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
     private static long? Long(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : null;
     private static string? RepositoryIdentity(string url) { if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)) return null; var p = uri.AbsolutePath.Trim('/').Split('/'); if (p.Length != 2) return null; return $"{p[0]}/{(p[1].EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? p[1][..^4] : p[1])}"; }
     private static DeliveryOperationResult<PullRequestReference> Fail(string code, string error) => DeliveryOperationResult<PullRequestReference>.Fail(code, error);
-    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, DateTimeOffset CreatedAt);
+    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, DateTimeOffset CreatedAt, string? MergeCommitSha);
 }
