@@ -77,6 +77,7 @@ public sealed class TaskDeliveryCoordinatorTests
     private static void Merge(TaskDelivery delivery)
     {
         delivery.StartPreparing();
+        delivery.RecordDeliveryBase("base");
         delivery.RecordBranchPrepared("feature/task");
         delivery.RecordPatchApplied();
         delivery.RecordValidated();
@@ -158,6 +159,7 @@ public sealed class TaskDeliveryCoordinatorTests
         public List<TaskDelivery> Items { get; } = [];
         public Task<TaskDelivery?> GetByTaskAsync(Guid p, Guid r, Guid t, CancellationToken ct) => Task.FromResult(Items.SingleOrDefault(x => x.PlannedTaskId == t));
         public Task<IReadOnlyList<TaskDelivery>> ListByRunAsync(Guid p, Guid r, CancellationToken ct) => Task.FromResult<IReadOnlyList<TaskDelivery>>(Items.ToList());
+        public Task<TaskDelivery?> ClaimNextPendingAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct) => Task.FromResult<TaskDelivery?>(null);
         public Task AddAsync(TaskDelivery d, CancellationToken ct)
         {
             Items.Add(d);

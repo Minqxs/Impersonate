@@ -14,6 +14,9 @@ public sealed class ExecutionOptions
     {
         get; set;
     }
+    public string? DeliveryRoot { get; set; }
+    public string DeliveryCommitName { get; set; } = "Impersonate";
+    public string DeliveryCommitEmail { get; set; } = "impersonate@localhost";
     public int MaximumArtifactBytes { get; set; } = 2_000_000;
     public int MaximumToolOutputCharacters { get; set; } = 100_000;
     public int MaximumCoderProviderRounds { get; set; } = 30;

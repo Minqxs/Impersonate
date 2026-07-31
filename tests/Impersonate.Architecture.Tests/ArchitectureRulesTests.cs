@@ -149,9 +149,13 @@ public sealed class ArchitectureRulesTests
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Persistence.EfPipelineRunRepository"));
         AssertAssignable<Application.Delivery.ITaskDeliveryRepository>(
             RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Persistence.EfTaskDeliveryRepository"));
+        AssertAssignable<Application.Delivery.ITargetRepositoryDeliveryService>(
+            RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.LocalTargetRepositoryDeliveryService"));
+        AssertAssignable<Application.Delivery.IDeliveryValidationService>(
+            RequiredType(infrastructureAssembly, "Impersonate.Infrastructure.Delivery.ConservativeDeliveryValidationService"));
         Assert.DoesNotContain(infrastructureAssembly.GetTypes(), type =>
-            typeof(Application.Delivery.ITargetRepositoryDeliveryService).IsAssignableFrom(type)
-            || typeof(Application.Delivery.IPullRequestGateway).IsAssignableFrom(type));
+            type != typeof(Application.Delivery.IPullRequestGateway)
+            && typeof(Application.Delivery.IPullRequestGateway).IsAssignableFrom(type));
     }
 
     private static void AssertReferences(Assembly assembly, IReadOnlyCollection<string> forbidden)
