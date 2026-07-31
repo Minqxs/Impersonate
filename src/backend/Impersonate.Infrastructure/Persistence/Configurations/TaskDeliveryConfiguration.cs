@@ -30,6 +30,9 @@ internal sealed class TaskDeliveryConfiguration : IEntityTypeConfiguration<TaskD
         b.Property(x => x.PullRequestProvider).HasMaxLength(50);
         b.Property(x => x.PullRequestRepository).HasMaxLength(300);
         b.Property(x => x.PullRequestUrl).HasMaxLength(1000);
+        b.Property(x => x.PullRequestHeadBranch).HasMaxLength(250);
+        b.Property(x => x.PullRequestBaseBranch).HasMaxLength(200);
+        b.Property(x => x.PullRequestObservedHeadSha).HasMaxLength(64);
         b.Property(x => x.FailureCode).HasMaxLength(100);
         b.Property(x => x.FailureMessage).HasMaxLength(1000);
         b.Property(x => x.RecoveryStatus).HasConversion<string>().HasMaxLength(40);

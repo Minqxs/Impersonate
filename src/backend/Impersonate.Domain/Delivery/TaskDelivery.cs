@@ -75,6 +75,10 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
+    public string? PullRequestHeadBranch { get; private set; }
+    public string? PullRequestBaseBranch { get; private set; }
+    public string? PullRequestObservedHeadSha { get; private set; }
+    public DateTimeOffset? PullRequestCreatedAtUtc { get; private set; }
     public string? FailureCode
     {
         get; private set;
@@ -192,7 +196,7 @@ public sealed class TaskDelivery
         Set(TaskDeliveryStatus.Pushed, PushedAtUtc);
     }
     public TaskDeliveryStatus? RecoveryStatus { get; private set; }
-    public void RecordPullRequestOpen(string provider, string repository, long number, string safeUrl, DateTimeOffset? at = null)
+    public void RecordPullRequestOpen(string provider, string repository, long number, string safeUrl, string headBranch, string baseBranch, string observedHeadSha, DateTimeOffset createdAt, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Pushed);
         if (number <= 0)
@@ -201,6 +205,11 @@ public sealed class TaskDelivery
         PullRequestRepository = Required(repository, 300);
         PullRequestNumber = number;
         PullRequestUrl = Required(safeUrl, 1000);
+        PullRequestHeadBranch = Required(headBranch, 250);
+        PullRequestBaseBranch = Required(baseBranch, 200);
+        PullRequestObservedHeadSha = Required(observedHeadSha, 64);
+        if (!string.Equals(PullRequestObservedHeadSha, CommitSha, StringComparison.OrdinalIgnoreCase)) throw Invalid("Pull-request head must match the approved commit.");
+        PullRequestCreatedAtUtc = createdAt;
         Set(TaskDeliveryStatus.PullRequestOpen, at);
     }
     public void AwaitMerge(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.PullRequestOpen, TaskDeliveryStatus.AwaitingMerge, at);

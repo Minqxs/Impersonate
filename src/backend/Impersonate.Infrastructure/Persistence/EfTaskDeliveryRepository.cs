@@ -12,7 +12,7 @@ internal sealed class EfTaskDeliveryRepository(ImpersonateDbContext db) : ITaskD
     public async Task<TaskDelivery?> ClaimNextPendingAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
-        TaskDeliveryStatus[] claimable = [TaskDeliveryStatus.Pending, TaskDeliveryStatus.Preparing, TaskDeliveryStatus.BranchPrepared, TaskDeliveryStatus.PatchApplied, TaskDeliveryStatus.Validated, TaskDeliveryStatus.Committed];
+        TaskDeliveryStatus[] claimable = [TaskDeliveryStatus.Pending, TaskDeliveryStatus.Preparing, TaskDeliveryStatus.BranchPrepared, TaskDeliveryStatus.PatchApplied, TaskDeliveryStatus.Validated, TaskDeliveryStatus.Committed, TaskDeliveryStatus.Pushed];
         var delivery = await db.TaskDeliveries.Where(x => claimable.Contains(x.Status) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
         if (delivery is null) { await transaction.CommitAsync(ct); return null; }
         delivery.Claim(claimId, owner, expiresAt, claimedAt);

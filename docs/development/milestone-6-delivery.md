@@ -20,8 +20,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 |---|---|---|---|---|
 | 1 | Delivery domain and handoff contract | `TaskDelivery`, guarded states, coordinator, EF migration, run projection | Complete in merged PR #40 | None |
 | 2 | Target Git branch/worktree, patch, validation, one commit | PR #43 squash-merged as `f13de39d8b2deea8804cc5bbd80051b052689a6b`; 215 backend and 18 frontend tests passed; two-task local acceptance created distinct branches/commits and replay was idempotent | Complete | None |
-| 3 | Push and remote branch recovery | `feat/task-delivery-push`, draft PR #44: explicit non-force refspec, matching-ref/lost-response recovery, conflict blocking, safe remote identity persistence; 218 backend and 18 frontend tests pass | Draft review | CI and squash merge, then Phase 4 |
-| 4 | GitHub MCP pull-request creation | Deferred | Not started | Provider adapter and idempotent PR recovery |
+| 3 | Push and remote branch recovery | PR #44 squash-merged as `0f2c056678455ea095230438523a1010e14e3f14`; explicit non-force refspec, matching-ref/lost-response recovery, conflict blocking, safe remote identity persistence; 218 backend and 18 frontend tests passed | Complete | None |
+| 4 | GitHub MCP pull-request creation | `feat/github-mcp-task-pull-requests`: official remote/local MCP transports, exact three-tool allowlist, repository allowlist, draft PR creation/recovery, safe identity persistence; 223 backend tests pass | Implementation validation | Frontend validation, review, CI, and squash merge |
 | 5 | Merge reconciliation and dependency unlocking | Deferred | Not started | External merge observation |
 | 6 | Full Milestone 6 acceptance | Deferred | Not started | Live end-to-end evidence |
 
@@ -33,7 +33,7 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 - Same-patch replay is idempotent; changed-patch replay fails explicitly.
 - Handoff validates run, loop, claim, approval, patch, review, source, and routing evidence.
 - Run details expose safe delivery readiness and state without an action button.
-- Phase 2 permits local target Git preparation only. Push, remote branch creation, GitHub delivery calls, and target pull requests remain impossible.
+- GitHub MCP delivery is disabled by default, constrained to an explicit repository allowlist and exactly three pull-request tools, and exercised without live or paid calls in automated tests.
 - No paid provider call is used by automated tests.
 
 ## Recovery and future completion

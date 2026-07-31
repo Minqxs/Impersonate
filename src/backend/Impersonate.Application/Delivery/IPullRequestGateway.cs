@@ -1,6 +1,8 @@
 namespace Impersonate.Application.Delivery;
 
+using Impersonate.Domain.Delivery;
+
 public interface IPullRequestGateway
 {
-    Task<DeliveryOperationResult<PullRequestReference>> OpenAsync(Guid projectId, Guid deliveryId, string branchName, string commitSha, CancellationToken cancellationToken);
+    Task<DeliveryOperationResult<PullRequestReference>> OpenAsync(TaskDelivery delivery, ApprovedTaskHandoff handoff, CancellationToken cancellationToken);
 }
