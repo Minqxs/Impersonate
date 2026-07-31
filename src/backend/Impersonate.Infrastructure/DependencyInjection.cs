@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddSingleton<DeliveryWorkspaceRegistry>();
         services.AddSingleton<IDeliveryValidationService, ConservativeDeliveryValidationService>();
         services.AddScoped<ITargetRepositoryDeliveryService, LocalTargetRepositoryDeliveryService>();
+        services.AddScoped<ITaskDeliveryPushService, TaskDeliveryPushService>();
         services.AddSingleton<RepositoryWorkspaceService>();
         services.AddSingleton<IRepositoryWorkspaceService>(x => x.GetRequiredService<RepositoryWorkspaceService>());
         services.AddSingleton<IRepositoryTools, SafeRepositoryTools>();

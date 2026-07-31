@@ -82,7 +82,7 @@ public sealed class TaskDeliveryCoordinatorTests
         delivery.RecordPatchApplied();
         delivery.RecordValidated();
         delivery.RecordCommitted("commit");
-        delivery.RecordPushed();
+        delivery.RecordPushed("origin", "owner/repo", "feature/task", "commit");
         delivery.RecordPullRequestOpen("GitHub", "owner/repo", 1, "safe");
         delivery.MarkMerged();
     }

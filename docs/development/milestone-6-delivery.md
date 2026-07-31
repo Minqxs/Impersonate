@@ -19,8 +19,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 | Phase | Scope | Evidence | Status | Remaining gate |
 |---|---|---|---|---|
 | 1 | Delivery domain and handoff contract | `TaskDelivery`, guarded states, coordinator, EF migration, run projection | Complete in merged PR #40 | None |
-| 2 | Target Git branch/worktree, patch, validation, one commit | `feat/local-task-delivery`, draft PR #43: durable leases, bare cache/worktree isolation, exact patch checks, conservative validation, single-parent commit; 215 backend and 18 frontend tests pass; two-task local acceptance creates distinct branches/commits and replay is idempotent | Draft review | CI, squash merge, then Phase 3 |
-| 3 | Push and remote branch recovery | Deferred | Not started | Credential-safe remote recovery |
+| 2 | Target Git branch/worktree, patch, validation, one commit | PR #43 squash-merged as `f13de39d8b2deea8804cc5bbd80051b052689a6b`; 215 backend and 18 frontend tests passed; two-task local acceptance created distinct branches/commits and replay was idempotent | Complete | None |
+| 3 | Push and remote branch recovery | `feat/task-delivery-push`: explicit non-force refspec, matching-ref/lost-response recovery, conflict blocking, safe remote identity persistence | In progress | Full validation, review, draft PR and merge |
 | 4 | GitHub MCP pull-request creation | Deferred | Not started | Provider adapter and idempotent PR recovery |
 | 5 | Merge reconciliation and dependency unlocking | Deferred | Not started | External merge observation |
 | 6 | Full Milestone 6 acceptance | Deferred | Not started | Live end-to-end evidence |

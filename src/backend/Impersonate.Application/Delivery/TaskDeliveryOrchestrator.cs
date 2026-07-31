@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Application.Delivery;
 
-internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, ITargetRepositoryDeliveryService target, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
+internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -22,7 +22,12 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
             {
                 var result = await target.DeliverApprovedPatchAsync(delivery, handoff.Value!, ct);
                 if (!result.Succeeded) { delivery.Block(result.Code ?? "delivery_failed", result.Error ?? "Local delivery preparation failed safely."); delivery.ReleaseClaim(); }
-                else delivery.ReleaseClaim();
+                else
+                {
+                    var pushed = await push.PushAsync(delivery, ct);
+                    if (!pushed.Succeeded) delivery.Block(pushed.Code ?? "delivery_push_failed", pushed.Error ?? "Task branch could not be pushed safely.");
+                    delivery.ReleaseClaim();
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { delivery.ReleaseClaim(); throw; }
