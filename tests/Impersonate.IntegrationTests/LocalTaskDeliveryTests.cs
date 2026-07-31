@@ -41,12 +41,26 @@ public sealed class LocalTaskDeliveryTests
             var service = new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), repository, new ArtifactStore(patch), new Validation(), registry, process, options);
 
             var result = await service.DeliverApprovedPatchAsync(delivery, handoff, default);
+            var replay = await service.DeliverApprovedPatchAsync(delivery, handoff, default);
 
-            Assert.True(result.Succeeded, result.Error);
+            var second = TaskDelivery.Create(project.Id, delivery.PipelineRunId, Guid.NewGuid(), 2, baseSha, "artifact:patch", patchSha, Guid.NewGuid());
+            var secondHandoff = handoff with { PlannedTaskId = second.PlannedTaskId, TaskSequence = 2, Title = "Update readme independently", ApprovedReviewDecisionId = second.ApprovedReviewDecisionId };
+            var secondService = new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), new DeliveryRepository(second), new ArtifactStore(patch), new Validation(), registry, process, options);
+            var secondResult = await secondService.DeliverApprovedPatchAsync(second, secondHandoff, default);
+
+            Assert.True(result.Succeeded, $"{result.Code}: {result.Error}");
+            Assert.True(replay.Succeeded, $"{replay.Code}: {replay.Error}");
+            Assert.True(secondResult.Succeeded, $"{secondResult.Code}: {secondResult.Error}");
             Assert.Equal(TaskDeliveryStatus.Committed, delivery.Status);
+            Assert.Equal(result.Value!.CommitSha, replay.Value!.CommitSha);
+            Assert.NotEqual(result.Value.BranchName, secondResult.Value!.BranchName);
+            Assert.NotEqual(result.Value.CommitSha, secondResult.Value.CommitSha);
             Assert.Equal(baseSha, delivery.DeliveryBaseCommitSha);
             Assert.Equal(baseSha, Git(source, "rev-parse", "main").Trim());
-            Assert.False(Git(source, "branch", "--list", result.Value!.BranchName).Contains(result.Value.BranchName, StringComparison.Ordinal));
+            Assert.False(Git(source, "branch", "--list", result.Value.BranchName).Contains(result.Value.BranchName, StringComparison.Ordinal));
+            var cache = Path.Combine(root, "delivery", "repositories", project.Id.ToString("N"), "repository.git");
+            Assert.Equal("2", Git(root, $"--git-dir={cache}", "rev-list", "--count", result.Value.BranchName).Trim());
+            Assert.Equal("2", Git(root, $"--git-dir={cache}", "rev-list", "--count", secondResult.Value.BranchName).Trim());
             Assert.True(repository.SaveCount >= 4);
         }
         finally

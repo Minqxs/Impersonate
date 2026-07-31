@@ -142,13 +142,25 @@ public sealed class TaskDelivery
     }
     public void RecordDeliveryBase(string sha, DateTimeOffset? at = null)
     {
-        Ensure(TaskDeliveryStatus.Preparing); DeliveryBaseCommitSha = Required(sha, 64); UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+        Ensure(TaskDeliveryStatus.Preparing);
+        var value = Required(sha, 64);
+        if (DeliveryBaseCommitSha is not null && !string.Equals(DeliveryBaseCommitSha, value, StringComparison.OrdinalIgnoreCase)) throw Invalid("Delivery base conflicts with the persisted identity.");
+        DeliveryBaseCommitSha = value; UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+    }
+    public void RecordBranchIntent(string branchName, DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.Preparing);
+        var value = Required(branchName, 250);
+        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal)) throw Invalid("Branch name conflicts with the persisted identity.");
+        BranchName = value; UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
     }
     public void RecordBranchPrepared(string branchName, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Preparing);
         if (string.IsNullOrWhiteSpace(DeliveryBaseCommitSha)) throw Invalid("Delivery base must be resolved before preparing a branch.");
-        BranchName = Required(branchName, 250);
+        var value = Required(branchName, 250);
+        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal)) throw Invalid("Branch name conflicts with the persisted identity.");
+        BranchName = value;
         Set(TaskDeliveryStatus.BranchPrepared, at);
     }
     public void RecordPatchApplied(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.BranchPrepared, TaskDeliveryStatus.PatchApplied, at);

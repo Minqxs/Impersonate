@@ -25,7 +25,7 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
                 else delivery.ReleaseClaim();
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { delivery.ReleaseClaim(); throw; }
         catch (Exception ex) { delivery.Block(SafeCode(ex), "Local task delivery could not complete. Review the bounded delivery diagnostics before recovery."); delivery.ReleaseClaim(); }
         finally { await deliveries.SaveChangesAsync(CancellationToken.None); }
         return true;
