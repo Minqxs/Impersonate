@@ -163,6 +163,8 @@ v0.1.0-core-pipeline
 
 ## Current expected position
 
+Quick Win A, Project workspace UX, is complete. Quick Win B, the optional project code-quality overview, adds informational SonarQube Server analytics without changing the Milestone 6 sequence.
+
 Milestones 1–4 are complete. Planner completion added safe configuration readiness, structured failures, visible attempt history, and manual live-provider acceptance instructions.
 
 Milestone 5 is complete. Milestone 6, Git and GitHub delivery, is next. Impersonate does not yet create commits, pushes, branches, or pull requests.

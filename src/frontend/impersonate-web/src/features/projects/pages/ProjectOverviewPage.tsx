@@ -4,12 +4,14 @@ import { Link, useParams } from 'react-router-dom';
 import { getProject, getProjectHealth } from '../api/projectsApi';
 import { listRuns, runKeys } from '../../runs/api/runsApi';
 import { MetricCard } from '../components/MetricCard';
+import { getQualitySummary, qualityKeys } from '../api/qualityApi';
 
 export function ProjectOverviewPage() {
   const { projectId = '' } = useParams();
   const project = useQuery({ queryKey: ['project', projectId], queryFn: () => getProject(projectId), enabled: !!projectId });
   const health = useQuery({ queryKey: ['project-health', projectId], queryFn: () => getProjectHealth(projectId), enabled: !!projectId });
   const runs = useQuery({ queryKey: runKeys.all(projectId), queryFn: () => listRuns(projectId), enabled: !!projectId });
+  const quality = useQuery({ queryKey: qualityKeys.summary(projectId), queryFn: () => getQualitySummary(projectId), enabled: !!projectId, retry: false });
   if (project.isPending || runs.isPending) return <CircularProgress aria-label="Loading project overview" />;
   if (project.isError || !project.data) return <Alert severity="error">This project is unavailable.</Alert>;
   const allRuns = runs.data ?? [];
@@ -29,7 +31,7 @@ export function ProjectOverviewPage() {
       <MetricCard label="Latest run" value={latest ? readableState(latest.status) : 'None'} detail={latest ? `${latest.loop.currentStage} · ${summarise(latest.featureRequest)}` : 'Create the first pipeline run'} action={latest && <Button component={Link} to={`/projects/${projectId}/runs/${latest.id}/overview`} size="small" sx={{ px: 0 }}>Open latest run</Button>} />
       <MetricCard label="Delivery" value={deliveries} detail={`${deliveryReady} eligible · read-only foundation`} />
       <MetricCard label="Blocked work" value={blocked} detail={blocked ? 'Review runs and project health' : 'No blocked work'} />
-      <MetricCard label="Code quality" value="Not configured" detail="Optional analytics arrive in Quick Win B" />
+      <MetricCard label="Code quality" value={quality.isPending?'Loading':quality.isError?'Temporarily unavailable':readableState(quality.data?.state??'NotConfigured')} detail={quality.data?.state==='Passed'||quality.data?.state==='Failed'?`Coverage ${quality.data.coverage.value?.toFixed(1)??'unavailable'}% · Security ${quality.data.security.rating??'unavailable'}`:quality.data?.safeMessage??'Optional SonarQube analytics'} action={<Button component={Link} to={`/projects/${projectId}/quality`} size="small" sx={{px:0}}>View quality</Button>} />
     </Box>
     <Card variant="outlined"><CardContent><Typography variant="h6">Project identity</Typography><Typography sx={{ overflowWrap: 'anywhere' }}>{project.data.repositoryUrl}</Typography><Typography color="text.secondary">Default branch: {project.data.defaultBranch}</Typography></CardContent></Card>
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">

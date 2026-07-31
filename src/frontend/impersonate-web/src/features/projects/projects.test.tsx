@@ -9,6 +9,7 @@ import { ProjectSelector } from './components/ProjectSelector';
 import { CreateProjectPage, ProjectsPage } from './pages/ProjectsPages';
 import { ProjectWorkspaceLayout } from './layouts/ProjectWorkspaceLayout';
 import { ProjectOverviewPage } from './pages/ProjectOverviewPage';
+import { ProjectQualityPage } from './pages/ProjectQualityPage';
 
 const project = { id: '11111111-1111-1111-1111-111111111111', name: 'Alpha', repositoryUrl: 'https://github.com/example/alpha', defaultBranch: 'main', status: 'Idle', createdAtUtc: '2026-07-20T00:00:00Z', updatedAtUtc: '2026-07-20T00:00:00Z' };
 
@@ -78,5 +79,22 @@ describe('project workspace frontend', () => {
     expect(screen.getByText('Approved tasks')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create run' })).toHaveAttribute('href', `/projects/${project.id}/runs/new`);
     expect(screen.getByRole('link', { name: 'View delivery' })).toBeInTheDocument();
+  });
+
+  it('renders the unconfigured code-quality state without blocking the page', async () => {
+    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/quality/configuration') ? response({ configured: false, enabled: false, credentialConfigured: false }) : response({ state: 'NotConfigured', coverage: {}, newCoverage: {}, reliability: {}, security: {}, maintainability: {}, duplicatedLines: {} }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${project.id}/quality`]}><Routes><Route path="/projects/:projectId/quality" element={<ProjectQualityPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByText('Connect SonarQube')).toBeInTheDocument();
+    expect(screen.getByText(/does not block task execution or delivery/)).toBeInTheDocument();
+  });
+
+  it('shows available quality measures and preserves unavailable values', async () => {
+    vi.mocked(fetch).mockImplementation(input => String(input).endsWith('/quality/configuration') ? response({ configured: true, enabled: true, baseUrl: 'https://sonar.example', projectKey: 'alpha', credentialConfigured: true }) : response({ state: 'Passed', qualityGate: 'OK', coverage: { value: 82.4 }, newCoverage: {}, reliability: { rating: 'A' }, security: { rating: 'B' }, maintainability: { rating: 'A' }, duplicatedLines: { value: 1.2 }, lastSuccessfulRefreshAtUtc: '2026-07-30T00:00:00Z' }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${project.id}/quality`]}><Routes><Route path="/projects/:projectId/quality" element={<ProjectQualityPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByText('82.4%')).toBeInTheDocument();
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
+    expect(screen.queryByDisplayValue(/secret/i)).not.toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ This controller tracks the two bounded quick wins inserted after the merged Mile
 | Phase | Branch | Pull request | Validation | Manual acceptance | Remaining work | Milestone 6 behaviour |
 |---|---|---|---|---|---|---|
 | A: Project workspace UX | `feat/project-workspace-navigation` | Draft PR #41 | Frontend passed; backend tests passed; exact Debug build blocked by running API/Worker locks | 768px and 1600px inspected; final 375px and 1280px confirmation pending after header correction | Draft PR review and merge | Untouched: delivery remains a read-only per-task foundation; no target Git or GitHub operations |
-| B: Project code-quality overview | Not started | Not started | Not run | Not run | Begins only after Phase A merges | Must remain untouched |
+| B: Project code-quality overview | `feat/project-code-quality-overview` | Draft PR pending | In progress | Pending | Complete implementation, validation, review and draft PR | Untouched: informational analytics only |
 
 ## Verified starting state
 
