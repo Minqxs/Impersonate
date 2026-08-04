@@ -18,17 +18,61 @@ namespace Impersonate.IntegrationTests;
 public sealed class LocalTaskDeliveryTests
 {
     [Fact]
+    public async Task Live_crlf_patch_passes_exact_file_set_verification()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "impersonate-live-patch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var source = Path.Combine(root, "source");
+            Directory.CreateDirectory(source);
+            var relative = "backend/src/HomeTaskSA.Domain/Entities/User.cs";
+            var file = Path.Combine(source, relative.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            Git(source, "init", "-b", "main");
+            Git(source, "config", "user.name", "Test");
+            Git(source, "config", "user.email", "test@example.invalid");
+            await File.WriteAllTextAsync(file, "before\n");
+            Git(source, "add", ".");
+            Git(source, "commit", "-m", "initial");
+            var baseSha = Git(source, "rev-parse", "HEAD").Trim();
+            await File.WriteAllTextAsync(file, "after\n");
+            var patch = Git(source, "diff", "--", relative);
+            var header = $"diff --git a/{relative} b/{relative}\n";
+            patch = patch.Replace(header, header.TrimEnd('\n') + "\r\n", StringComparison.Ordinal);
+            Git(source, "restore", relative);
+            var sha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(patch))).ToLowerInvariant();
+            var project = Project.Create("Live", null, "https://github.com/owner/repository", "main");
+            typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, source);
+            var delivery = TaskDelivery.Create(project.Id, Guid.NewGuid(), Guid.NewGuid(), 1, baseSha, "artifact:live", sha, Guid.NewGuid());
+            var handoff = new ApprovedTaskHandoff(project.Id, delivery.PipelineRunId, delivery.PlannedTaskId, 1, "Live path", "description", [], [], baseSha, "artifact:live", sha, [relative], [], delivery.ApprovedReviewDecisionId, "reviewer", "model", "approved", "coder", "model", Evidence(), Evidence(), Guid.NewGuid(), 1, 0);
+            var options = Options.Create(new ExecutionOptions { DeliveryRoot = Path.Combine(root, "delivery"), CommandTimeoutSeconds = 30 });
+            var result = await new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), new DeliveryRepository(delivery), new ArtifactStore(patch), new Validation(), new DeliveryWorkspaceRegistry(), new SafeProcess(new ProcessEnvironment(), NullLogger<SafeProcess>.Instance), options).DeliverApprovedPatchAsync(delivery, handoff, default);
+            Assert.True(result.Succeeded, $"{result.Code}: {result.Error}");
+            Assert.Equal(TaskDeliveryStatus.Committed, delivery.Status);
+        }
+        finally { if (Directory.Exists(root)) { foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)) File.SetAttributes(path, FileAttributes.Normal); Directory.Delete(root, true); } }
+    }
+
+    [Fact]
     public async Task Creates_one_local_commit_without_updating_target_remote()
     {
         var root = Path.Combine(Path.GetTempPath(), "impersonate-delivery-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {
-            var source = Path.Combine(root, "source"); Directory.CreateDirectory(source);
-            Git(source, "init", "-b", "main"); Git(source, "config", "user.name", "Test"); Git(source, "config", "user.email", "test@example.invalid");
-            await File.WriteAllTextAsync(Path.Combine(source, "README.md"), "before\n"); Git(source, "add", "README.md"); Git(source, "commit", "-m", "initial");
+            var source = Path.Combine(root, "source");
+            Directory.CreateDirectory(source);
+            Git(source, "init", "-b", "main");
+            Git(source, "config", "user.name", "Test");
+            Git(source, "config", "user.email", "test@example.invalid");
+            await File.WriteAllTextAsync(Path.Combine(source, "README.md"), "before\n");
+            Git(source, "add", "README.md");
+            Git(source, "commit", "-m", "initial");
             var baseSha = Git(source, "rev-parse", "HEAD").Trim();
-            await File.WriteAllTextAsync(Path.Combine(source, "README.md"), "after\n"); var patch = Git(source, "diff", "--", "README.md"); Git(source, "restore", "README.md");
+            await File.WriteAllTextAsync(Path.Combine(source, "README.md"), "after\n");
+            var patch = Git(source, "diff", "--", "README.md");
+            Git(source, "restore", "README.md");
             var patchSha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(patch))).ToLowerInvariant();
             var project = Project.Create("Local", null, "https://github.com/owner/repository", "main");
             typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, source);
@@ -44,7 +88,13 @@ public sealed class LocalTaskDeliveryTests
             var replay = await service.DeliverApprovedPatchAsync(delivery, handoff, default);
 
             var second = TaskDelivery.Create(project.Id, delivery.PipelineRunId, Guid.NewGuid(), 2, baseSha, "artifact:patch", patchSha, Guid.NewGuid());
-            var secondHandoff = handoff with { PlannedTaskId = second.PlannedTaskId, TaskSequence = 2, Title = "Update readme independently", ApprovedReviewDecisionId = second.ApprovedReviewDecisionId };
+            var secondHandoff = handoff with
+            {
+                PlannedTaskId = second.PlannedTaskId,
+                TaskSequence = 2,
+                Title = "Update readme independently",
+                ApprovedReviewDecisionId = second.ApprovedReviewDecisionId
+            };
             var secondService = new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), new DeliveryRepository(second), new ArtifactStore(patch), new Validation(), registry, process, options);
             var secondResult = await secondService.DeliverApprovedPatchAsync(second, secondHandoff, default);
 
@@ -78,7 +128,13 @@ public sealed class LocalTaskDeliveryTests
 
             typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, source);
             var recoveredDelivery = TaskDelivery.Create(project.Id, delivery.PipelineRunId, Guid.NewGuid(), 3, baseSha, "artifact:patch", patchSha, Guid.NewGuid());
-            var recoveredHandoff = handoff with { PlannedTaskId = recoveredDelivery.PlannedTaskId, TaskSequence = 3, Title = "Recover pushed branch", ApprovedReviewDecisionId = recoveredDelivery.ApprovedReviewDecisionId };
+            var recoveredHandoff = handoff with
+            {
+                PlannedTaskId = recoveredDelivery.PlannedTaskId,
+                TaskSequence = 3,
+                Title = "Recover pushed branch",
+                ApprovedReviewDecisionId = recoveredDelivery.ApprovedReviewDecisionId
+            };
             var recoveredRepository = new DeliveryRepository(recoveredDelivery);
             var recoveredLocal = await new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), recoveredRepository, new ArtifactStore(patch), new Validation(), registry, process, options).DeliverApprovedPatchAsync(recoveredDelivery, recoveredHandoff, default);
             Assert.True(recoveredLocal.Succeeded);
@@ -90,7 +146,13 @@ public sealed class LocalTaskDeliveryTests
 
             typeof(Project).GetProperty(nameof(Project.RepositoryUrl), BindingFlags.Instance | BindingFlags.Public)!.SetValue(project, source);
             var conflictDelivery = TaskDelivery.Create(project.Id, delivery.PipelineRunId, Guid.NewGuid(), 4, baseSha, "artifact:patch", patchSha, Guid.NewGuid());
-            var conflictHandoff = handoff with { PlannedTaskId = conflictDelivery.PlannedTaskId, TaskSequence = 4, Title = "Conflict branch", ApprovedReviewDecisionId = conflictDelivery.ApprovedReviewDecisionId };
+            var conflictHandoff = handoff with
+            {
+                PlannedTaskId = conflictDelivery.PlannedTaskId,
+                TaskSequence = 4,
+                Title = "Conflict branch",
+                ApprovedReviewDecisionId = conflictDelivery.ApprovedReviewDecisionId
+            };
             var conflictRepository = new DeliveryRepository(conflictDelivery);
             var conflictLocal = await new LocalTargetRepositoryDeliveryService(new ProjectRepository(project), conflictRepository, new ArtifactStore(patch), new Validation(), registry, process, options).DeliverApprovedPatchAsync(conflictDelivery, conflictHandoff, default);
             Assert.True(conflictLocal.Succeeded);
@@ -105,7 +167,8 @@ public sealed class LocalTaskDeliveryTests
         {
             if (Directory.Exists(root))
             {
-                foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)) File.SetAttributes(path, FileAttributes.Normal);
+                foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
+                    File.SetAttributes(path, FileAttributes.Normal);
                 Directory.Delete(root, true);
             }
         }
@@ -115,9 +178,15 @@ public sealed class LocalTaskDeliveryTests
     private static string Git(string cwd, params string[] args)
     {
         var start = new ProcessStartInfo("git") { WorkingDirectory = cwd, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        foreach (var arg in args) start.ArgumentList.Add(arg);
-        using var process = Process.Start(start)!; var output = process.StandardOutput.ReadToEnd(); var error = process.StandardError.ReadToEnd(); process.WaitForExit();
-        if (process.ExitCode != 0) throw new InvalidOperationException(error); return output;
+        foreach (var arg in args)
+            start.ArgumentList.Add(arg);
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(error);
+        return output;
     }
     private sealed class ProcessEnvironment : IChildProcessEnvironmentBuilder
     {
@@ -129,8 +198,15 @@ public sealed class LocalTaskDeliveryTests
     }
     private sealed class DeliveryRepository(TaskDelivery delivery) : ITaskDeliveryRepository
     {
-        public int SaveCount { get; private set; }
-        public Task<TaskDelivery?> GetByTaskAsync(Guid p, Guid r, Guid t, CancellationToken ct) => Task.FromResult<TaskDelivery?>(delivery); public Task<IReadOnlyList<TaskDelivery>> ListByRunAsync(Guid p, Guid r, CancellationToken ct) => Task.FromResult<IReadOnlyList<TaskDelivery>>([delivery]); public Task AddAsync(TaskDelivery d, CancellationToken ct) => Task.CompletedTask; public Task<TaskDelivery?> ClaimNextPendingAsync(Guid id, string owner, DateTimeOffset at, DateTimeOffset expires, CancellationToken ct) => Task.FromResult<TaskDelivery?>(delivery); public Task SaveChangesAsync(CancellationToken ct) { SaveCount++; return Task.CompletedTask; }
+        public int SaveCount
+        {
+            get; private set;
+        }
+        public Task<TaskDelivery?> GetByTaskAsync(Guid p, Guid r, Guid t, CancellationToken ct) => Task.FromResult<TaskDelivery?>(delivery); public Task<IReadOnlyList<TaskDelivery>> ListByRunAsync(Guid p, Guid r, CancellationToken ct) => Task.FromResult<IReadOnlyList<TaskDelivery>>([delivery]); public Task AddAsync(TaskDelivery d, CancellationToken ct) => Task.CompletedTask; public Task<TaskDelivery?> ClaimNextPendingAsync(Guid id, string owner, DateTimeOffset at, DateTimeOffset expires, CancellationToken ct) => Task.FromResult<TaskDelivery?>(delivery); public Task SaveChangesAsync(CancellationToken ct)
+        {
+            SaveCount++;
+            return Task.CompletedTask;
+        }
     }
     private sealed class ArtifactStore(string patch) : IExecutionArtifactStore
     {

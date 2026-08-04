@@ -22,8 +22,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 | 2 | Target Git branch/worktree, patch, validation, one commit | PR #43 squash-merged as `f13de39d8b2deea8804cc5bbd80051b052689a6b`; 215 backend and 18 frontend tests passed; two-task local acceptance created distinct branches/commits and replay was idempotent | Complete | None |
 | 3 | Push and remote branch recovery | PR #44 squash-merged as `0f2c056678455ea095230438523a1010e14e3f14`; explicit non-force refspec, matching-ref/lost-response recovery, conflict blocking, safe remote identity persistence; 218 backend and 18 frontend tests passed | Complete | None |
 | 4 | GitHub MCP pull-request creation | PR #45 squash-merged as `462c8cba7e937dfb08a86406efa2194b709fc337`; official remote/local MCP transports, exact three-tool allowlist, repository allowlist, draft PR creation/recovery, safe identity persistence; 223 backend and 18 frontend tests passed | Complete | None |
-| 5 | Merge reconciliation and dependency unlocking | PR #46 on `feat/task-delivery-reconciliation`: dedicated leased worker, exact PR identity/head verification, open/merged/closed handling, dependent unlocking, run completion; 231 backend and 18 frontend tests pass; backend/frontend CI pass | Ready to merge | Squash merge, then Phase 6 |
-| 6 | Full Milestone 6 acceptance | Deferred | Not started | Live end-to-end evidence |
+| 5 | Merge reconciliation and dependency unlocking | PR #46 squash-merged as `a5646ea07c16ea8ccd1798887625221b19d1d925`: dedicated leased worker, exact PR identity/head verification, open/merged/closed handling, dependent unlocking, run completion | Complete | None |
+| 6 | Full Milestone 6 acceptance | Live run `9c3c71f2-caa8-4d85-8d8c-31e2b379e85c` preserved | In progress | Recover Task 1 after the verification fix, then stop at its human merge checkpoint |
 
 ## Foundation gates
 
@@ -38,4 +38,12 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 
 ## Recovery and future completion
 
-Persistence records branch, commit, push, and pull-request progress for later recovery without duplicating external effects. Failure recovery is explicit. A future reconciler may complete the run only after all approved task deliveries are merged, skipped tasks remain visible, and no delivery is active.
+Persistence records branch, commit, push, and pull-request progress for later recovery without duplicating external effects. Failure recovery is explicit. The reconciler completes the run only after all approved task deliveries are merged, skipped tasks remain visible, and no delivery is active.
+
+## Phase 6 live verification incident
+
+Task 1 delivery `3e7082b1-a017-4a49-bc69-e54a308bc872` blocked safely at `BranchPrepared` before commit, push, remote branch, or pull-request creation. Its approved artifact SHA-256 remained `973e14d36e5ab670f61932000c46f3ba931e7e5412b0836b10a9db918709ca37`, and the approved, patch-header, and intended staged path was `backend/src/HomeTaskSA.Domain/Entities/User.cs`.
+
+The exact mismatch was patch-header verification: the live artifact had a CRLF-terminated `diff --git` header, while the generated regular expression accepted only an LF-terminated header. This produced an empty parsed path set and the high-level `delivery_changed_files_mismatch` failure before `git apply` ran.
+
+The focused fix on `fix/delivery-changed-file-verification` makes generated diffs independent of Git presentation configuration, uses shared repository-path canonicalization and NUL-delimited Git file inspection, parses CRLF, spaces and supported Git quoting, preserves exact file-set equality, reports bounded patch/staged/commit evidence, and exposes project-scoped recovery of the same delivery record without rerunning AI. Record the merged fix PR and recovered Task 1 pull-request identity here after CI and live recovery. Task 2 remains correctly blocked until Task 1 is observed as `Merged`; the Task 1 pull request remains a genuine human merge checkpoint.

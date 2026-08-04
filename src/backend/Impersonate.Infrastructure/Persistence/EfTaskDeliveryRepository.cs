@@ -14,18 +14,54 @@ internal sealed class EfTaskDeliveryRepository(ImpersonateDbContext db) : ITaskD
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         TaskDeliveryStatus[] claimable = [TaskDeliveryStatus.Pending, TaskDeliveryStatus.Preparing, TaskDeliveryStatus.BranchPrepared, TaskDeliveryStatus.PatchApplied, TaskDeliveryStatus.Validated, TaskDeliveryStatus.Committed, TaskDeliveryStatus.Pushed];
         var delivery = await db.TaskDeliveries.Where(x => claimable.Contains(x.Status) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
-        if (delivery is null) { await transaction.CommitAsync(ct); return null; }
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
         delivery.Claim(claimId, owner, expiresAt, claimedAt);
-        try { await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct); return delivery; }
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
         catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
     }
     public async Task<TaskDelivery?> ClaimNextReconciliationAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
         var delivery = await db.TaskDeliveries.Where(x => (x.Status == TaskDeliveryStatus.PullRequestOpen || x.Status == TaskDeliveryStatus.AwaitingMerge) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
-        if (delivery is null) { await transaction.CommitAsync(ct); return null; }
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
         delivery.Claim(claimId, owner, expiresAt, claimedAt);
-        try { await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct); return delivery; }
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
+        catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
+    }
+    public async Task<TaskDelivery?> RecoverAsync(Guid projectId, Guid runId, Guid deliveryId, string approvedPatchSha256, Guid approvedReviewDecisionId, DateTimeOffset at, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var delivery = await db.TaskDeliveries.SingleOrDefaultAsync(x => x.ProjectId == projectId && x.PipelineRunId == runId && x.Id == deliveryId && x.ApprovedPatchSha256 == approvedPatchSha256 && x.ApprovedReviewDecisionId == approvedReviewDecisionId && (x.Status == TaskDeliveryStatus.Blocked || x.Status == TaskDeliveryStatus.Failed) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= at), ct);
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
+        delivery.Recover(at);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
         catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
     }
     public Task SaveChangesAsync(CancellationToken ct) => db.SaveChangesAsync(ct);

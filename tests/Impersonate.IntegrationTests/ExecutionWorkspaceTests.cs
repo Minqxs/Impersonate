@@ -12,6 +12,43 @@ namespace Impersonate.IntegrationTests;
 public sealed class ExecutionWorkspaceTests
 {
     [Fact]
+    public async Task Generated_patch_ignores_git_presentation_configuration()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "impersonate-diff-config-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(root, "source");
+        Directory.CreateDirectory(source);
+        try
+        {
+            Run("git", ["init", "-b", "main"], source);
+            Run("git", ["config", "user.email", "fixture@example.test"], source);
+            Run("git", ["config", "user.name", "Fixture"], source);
+            var relative = "nested/file with space.txt";
+            var file = Path.Combine(source, relative.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            await File.WriteAllTextAsync(file, "before\n");
+            Run("git", ["add", "."], source);
+            Run("git", ["commit", "-m", "baseline"], source);
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Execution:WorkspaceRoot"] = Path.Combine(root, "workspaces"), ["Execution:ArtifactRoot"] = Path.Combine(root, "artifacts"), ["Ai:DataProtectionKeyPath"] = Path.Combine(root, "keys") }).Build();
+            var services = new ServiceCollection().AddLogging();
+            services.AddSingleton<IConfiguration>(configuration);
+            services.AddInfrastructure(configuration, new TestEnvironment());
+            await using var provider = services.BuildServiceProvider();
+            var prepared = await provider.GetRequiredService<IRepositoryWorkspaceService>().PrepareAsync(new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, source, "main", [], null), default);
+            Assert.True(prepared.Succeeded, prepared.FailureMessage);
+            var workspace = workspacesPath(prepared.Workspace!, root);
+            Run("git", ["config", "diff.noprefix", "true"], workspace);
+            Run("git", ["config", "color.ui", "always"], workspace);
+            Run("git", ["config", "core.quotePath", "true"], workspace);
+            await File.WriteAllTextAsync(Path.Combine(workspace, relative.Replace('/', Path.DirectorySeparatorChar)), "after\n");
+            var diff = await provider.GetRequiredService<IRepositoryTools>().GetDiffAsync(prepared.Workspace!, default);
+            Assert.True(diff.Succeeded, diff.FailureMessage);
+            Assert.Contains($"diff --git a/{relative} b/{relative}", diff.Output);
+            Assert.DoesNotContain("\u001b[", diff.Output);
+        }
+        finally { if (Directory.Exists(root)) { foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)) File.SetAttributes(path, FileAttributes.Normal); Directory.Delete(root, true); } }
+    }
+
+    [Fact]
     public void Sanitized_environment_uses_explicit_allowlist_and_excludes_secrets()
     {
         var proxyName = "HTTPS_PROXY";
