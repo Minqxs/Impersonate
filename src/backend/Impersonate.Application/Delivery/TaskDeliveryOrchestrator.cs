@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Application.Delivery;
 
-internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IPullRequestGateway pullRequests, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
+internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, IRunDeliveryCoordinator runDeliveries, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IPullRequestGateway pullRequests, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -64,9 +64,14 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
     {
         foreach (var project in await projects.ListAsync(null, null, ct))
             foreach (var run in await runs.ListAsync(project.Id, PipelineRunStatus.ReadyForDelivery, null, null, ct))
+            {
+                var aggregate = await runDeliveries.GetOrCreateAsync(project.Id, run.Id, ct);
+                if (!aggregate.Succeeded)
+                    continue;
                 foreach (var item in await coordinator.GetEligibilityAsync(project.Id, run.Id, ct))
                     if (item.Eligible)
                         await coordinator.GetOrCreateAsync(project.Id, run.Id, item.PlannedTaskId, ct);
+            }
     }
     private static string SafeCode(Exception ex)
     {
