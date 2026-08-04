@@ -13,6 +13,7 @@ public static class DependencyInjection
         .AddScoped<IProjectService, ProjectService>()
         .AddScoped<IPipelineRunService, PipelineRunService>()
         .AddScoped<ITaskDeliveryCoordinator, TaskDeliveryCoordinator>()
+        .AddScoped<IRunDeliveryCoordinator, RunDeliveryCoordinator>()
         .AddScoped<ITaskDeliveryOrchestrator, TaskDeliveryOrchestrator>()
         .AddScoped<ITaskDeliveryReconciler, TaskDeliveryReconciler>()
         .AddScoped<ITaskDeliveryRecoveryService, TaskDeliveryRecoveryService>()

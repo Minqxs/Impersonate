@@ -56,6 +56,7 @@ public static class DependencyInjection
             services.AddScoped<IProjectRepository, EfProjectRepository>();
             services.AddScoped<IPipelineRunRepository, EfPipelineRunRepository>();
             services.AddScoped<ITaskDeliveryRepository, EfTaskDeliveryRepository>();
+            services.AddScoped<IRunDeliveryRepository, EfRunDeliveryRepository>();
             services.AddScoped<IExecutionInvocationStore, EfExecutionInvocationStore>();
             services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
             services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();

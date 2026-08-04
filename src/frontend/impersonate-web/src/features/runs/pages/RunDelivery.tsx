@@ -9,7 +9,14 @@ export function RunDelivery() {
   const retry = useMutation({ mutationFn: (deliveryId: string) => retryDelivery(run.projectId, run.id, deliveryId), onSuccess: refresh });
   return <Stack spacing={2}>
     <Typography variant="h5">Delivery</Typography>
-    <Alert severity="info">Each approved task is delivered through its own branch, commit, and focused pull request. Dependent tasks wait until dependency deliveries are merged. Merge reconciliation runs when GitHub MCP is configured.</Alert>
+    <Alert severity="info">This run owns one integration branch. Future internal task pull requests will target that branch; final delivery to the default branch remains deferred until aggregate validation and review are implemented.</Alert>
+    {run.runDelivery ? <Box border={1} borderColor="divider" borderRadius={1} p={2}>
+      <Stack direction="row" justifyContent="space-between"><Typography fontWeight={600}>Run integration</Typography><StateChip value={run.runDelivery.status} /></Stack>
+      <Typography>Run branch: {run.runDelivery.runBranchName}</Typography>
+      <Typography>Target branch: {run.runDelivery.sourceDefaultBranch}</Typography>
+      {run.runDelivery.runBranchHeadSha && <Typography>Current head: {run.runDelivery.runBranchHeadSha}</Typography>}
+      <Alert severity="warning" sx={{ mt: 1 }}>Foundation only: no final pull request or Merge to main action is available yet.</Alert>
+    </Box> : <Alert severity="warning">Run integration delivery has not been materialised. No run branch or final pull request has been created.</Alert>}
     {run.tasks.length === 0 ? <Alert severity="info">No task delivery state is available.</Alert> : run.tasks.map(task =>
       <Box key={task.id} border={1} borderColor="divider" borderRadius={1} p={2}>
         <Stack direction="row" justifyContent="space-between"><Typography fontWeight={600}>{task.sequence}. {task.title}</Typography><StateChip value={task.delivery?.status ?? (task.deliveryEligible ? 'Eligible' : 'Blocked')} /></Stack>

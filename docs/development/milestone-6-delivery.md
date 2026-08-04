@@ -1,4 +1,6 @@
-# Milestone 6: per-task delivery
+# Milestone 6: run integration delivery
+
+> The former per-task pull-request-to-main design is superseded. Historical evidence remains intact, but new delivery uses one integration branch per run, autonomous internal task pull requests, and one final user-approved pull request to the configured default branch.
 
 ## Goal
 
@@ -24,6 +26,25 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 | 4 | GitHub MCP pull-request creation | PR #45 squash-merged as `462c8cba7e937dfb08a86406efa2194b709fc337`; official remote/local MCP transports, exact three-tool allowlist, repository allowlist, draft PR creation/recovery, safe identity persistence; 223 backend and 18 frontend tests passed | Complete | None |
 | 5 | Merge reconciliation and dependency unlocking | PR #46 squash-merged as `a5646ea07c16ea8ccd1798887625221b19d1d925`: dedicated leased worker, exact PR identity/head verification, open/merged/closed handling, dependent unlocking, run completion | Complete | None |
 | 6 | Full Milestone 6 acceptance | Live run `9c3c71f2-caa8-4d85-8d8c-31e2b379e85c` preserved | In progress | Recover Task 1 after the verification fix, then stop at its human merge checkpoint |
+| Redesign 1 | Run delivery aggregate | Branch `refactor/run-integration-delivery`; `RunDelivery`, deterministic run branch identity, additive persistence and safe projection | In progress | Validate and merge focused PR |
+
+## Superseding delivery invariant
+
+One `PipelineRun` owns one `RunDelivery`, one deterministic run integration branch, internal task pull requests targeting that branch, and one final aggregate pull request targeting the configured default branch. Each approved task retains its own `TaskDelivery`, isolated branch, focused internal pull request, review history, and integrated commit. A run is never represented by one task-sized branch or by multiple final pull requests.
+
+The final aggregate pull request is created only after aggregate validation and exact-head final review. It is never a draft and is merged only after the user selects **Merge to main** inside Impersonate. Phase 1 introduces the durable aggregate and projection only; it cannot create branches, pull requests, or merge anything.
+
+## Redesign controller
+
+| Phase | Branch | Scope | Status |
+|---|---|---|---|
+| 1 | `refactor/run-integration-delivery` | Run aggregate, deterministic identity, persistence, projections | In progress |
+| 2 | `refactor/task-prs-target-run-branch` | Internal task PRs target the run branch | Pending |
+| 3 | `feat/task-pr-review-loop` | Exact-head delivery review and repair | Pending |
+| 4 | `feat/automatic-task-integration` | Automatic internal PR integration | Pending |
+| 5 | `feat/final-run-review-loop` | Aggregate refresh, validation, repair and review | Pending |
+| 6 | `feat/run-delivery-approval-ui` | Normal final PR and Merge to main | Pending |
+| 7 | `docs/run-integration-delivery-acceptance` | Historical reconciliation and live acceptance | Pending |
 
 ## Foundation gates
 

@@ -129,6 +129,10 @@ public sealed class PipelineRun
     public IReadOnlyList<PlannedTask> Tasks => tasks.OrderBy(x => x.Sequence).ToList().AsReadOnly();
     public IReadOnlyList<PipelineRunEvent> Events => events.OrderBy(x => x.Sequence).ToList().AsReadOnly();
     public IReadOnlyList<TaskDelivery> Deliveries => deliveries.OrderBy(x => x.TaskSequence).ToList().AsReadOnly();
+    public RunDelivery? RunDelivery
+    {
+        get; private set;
+    }
 
     public static PipelineRun Create(Guid projectId, string request, int maxRevisions = 3, bool continueOnFailure = true, DateTimeOffset? now = null) => new(projectId, request, maxRevisions, continueOnFailure, now ?? DateTimeOffset.UtcNow);
     public void StartPlanning(DateTimeOffset? at = null)

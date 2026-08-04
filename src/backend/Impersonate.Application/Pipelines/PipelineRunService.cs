@@ -254,7 +254,13 @@ internal sealed class PipelineRunService(IProjectRepository projects, IPipelineR
         new(r.LoopRun.Id, r.LoopRun.LoopDefinitionId, r.LoopRun.LoopDefinitionVersion, r.LoopRun.Status, r.LoopRun.CurrentStage, r.LoopRun.MaximumRevisionAttempts, r.LoopRun.ContinueOnTaskFailure, r.LoopRun.RetryCount, r.LoopRun.StartedAtUtc, r.LoopRun.CompletedAtUtc, r.LoopRun.StopReason, r.LoopRun.FailureReason),
         r.Tasks.Select(t => MapTask(r, t, executionInvocations)).ToList(),
         (attempts ?? []).Select(a => new PlanningAttemptDto(a.AttemptNumber, a.Provider, a.Model, a.PromptVersion, a.Status, a.StartedAtUtc, a.CompletedAtUtc, a.FailureCode, a.FailureMessage, a.InputTokenCount, a.OutputTokenCount)).ToList(),
-        r.InfrastructureFailureCode, r.InfrastructureFailureMessage, r.InfrastructureBlockedTaskId, Deserialize(r.PlanningWarningsJson));
+        r.InfrastructureFailureCode, r.InfrastructureFailureMessage, r.InfrastructureBlockedTaskId, Deserialize(r.PlanningWarningsJson), MapRunDelivery(r.RunDelivery));
+
+    private static RunDeliveryDto? MapRunDelivery(Domain.Delivery.RunDelivery? delivery) => delivery is null ? null : new(
+        delivery.Id, delivery.Status, delivery.SourceDefaultBranch, delivery.SourceBaseCommitSha, delivery.RunBranchName,
+        delivery.RunBranchHeadSha, delivery.AggregateValidationSummaryJson, delivery.FinalReviewDecisionId, delivery.FinalReviewedHeadSha,
+        delivery.FinalPullRequestRepository, delivery.FinalPullRequestNumber, delivery.FinalPullRequestUrl, delivery.FinalPullRequestHeadSha,
+        delivery.FinalPullRequestBaseBranch, delivery.FinalPullRequestMergeableState, delivery.RequiredChecksState, delivery.FailureCode, delivery.FailureMessage);
 
     private static PlannedTaskDto MapTask(PipelineRun run, PlannedTask task, IReadOnlyList<ExecutionInvocation>? executionInvocations)
     {
