@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Impersonate.Application.Tests" />
+    <InternalsVisibleTo Include="Impersonate.IntegrationTests" />
   </ItemGroup>
 </Project>

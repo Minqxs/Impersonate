@@ -67,7 +67,7 @@ Provider connections, discovery, and deterministic Planner routing were pulled f
 
 ### 6. Git and GitHub MCP delivery
 
-**Foundation in progress.** Per-task delivery state, handoff contracts, dependency eligibility, persistence, and read projections are introduced first. Target Git and GitHub operations remain deferred.
+**Implementation complete; live acceptance blocked on configuration.** Per-task local commit, safe push, official GitHub MCP draft-PR creation, merge reconciliation, and dependency unlocking are implemented. Free validation and deterministic local two-task acceptance pass. Final closure requires one explicitly authorized live target and protected MCP credentials.
 
 - feature branch
 - one approved commit per task
@@ -167,7 +167,7 @@ Quick Win A, Project workspace UX, is complete. Quick Win B, the optional projec
 
 Milestones 1–4 are complete. Planner completion added safe configuration readiness, structured failures, visible attempt history, and manual live-provider acceptance instructions.
 
-Milestone 5 is complete. Milestone 6, Git and GitHub delivery, is next. Impersonate does not yet create commits, pushes, branches, or pull requests.
+Milestone 5 is complete. Milestone 6 implementation phases #40, #43, #44, #45, and #46 are merged. Free and local acceptance pass; controlled live acceptance remains at the configuration preflight gate.
 
 Milestone 5.1 is complete: bounded repository-aware Planning, dependency/conflict ordering, rich task intelligence, versioned role-specific routing evidence, per-task previews, Reviewer diversity, and the read-only Brain decision projection are implemented. The full Brain UI remains deferred.
 
@@ -178,11 +178,11 @@ The repository must be inspected before this expected state is accepted as fact.
 The prior repository roadmap recorded the application bootstrap and project-scoped workspace foundation as complete, with the pipeline and loop domain foundation as the current milestone and planner agent integration next. This record is useful evidence, but a new session must still verify implementation and tests against `current-state-after-milestone-3.md`.
 # Routing hardening
 
-Capability-aware routing and endpoint compatibility are implemented as Milestone 5 hardening. Milestone 6 remains out of scope and has not started.
+Capability-aware routing and endpoint compatibility are implemented as Milestone 5 hardening. Milestone 6 implementation is complete and its live acceptance remains pending.
 
 Incremental task patch baselines are Milestone 5 execution hardening. Shared repository caches, bare mirrors, Git worktrees, workspace retention, disk cleanup, and storage quotas remain separate focused work. The Milestone 6 invariant remains one task, one approved commit, and one focused pull request.
 # Deferred provider efficiency work
 
 ## Historical execution optimisation
 
-Reliable autonomous execution comes before token optimisation. A later evidence-driven milestone may optimise context, prompts, and spend using successful run history: task type, repository area, useful evidence files, tool sequence, prompt version, model outcome, patch result, Reviewer decision, revisions, and token consumption. It may evaluate context compaction, prompt minimisation, repository knowledge reuse, and spend policy only after reliable completion data exists. Model fine-tuning is not planned until a training-data and evaluation strategy exists. Milestone 6 foundation is in progress; external delivery remains deferred.
+Reliable autonomous execution comes before token optimisation. A later evidence-driven milestone may optimise context, prompts, and spend using successful run history: task type, repository area, useful evidence files, tool sequence, prompt version, model outcome, patch result, Reviewer decision, revisions, and token consumption. It may evaluate context compaction, prompt minimisation, repository knowledge reuse, and spend policy only after reliable completion data exists. Model fine-tuning is not planned until a training-data and evaluation strategy exists. Milestone 6 external delivery is implemented; live acceptance awaits explicit target authorization and configuration.

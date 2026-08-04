@@ -4,7 +4,7 @@ Impersonate is a project-aware, personality-guided engineering system. The repos
 
 ## Current milestone
 
-Repository-aware planning, evidence-based model routing, recoverable per-task Git delivery, focused draft pull-request creation through the official GitHub MCP server, and merge reconciliation are implemented.
+Repository-aware planning, evidence-based model routing, recoverable per-task Git delivery, focused draft pull-request creation through the official GitHub MCP server, and merge reconciliation are implemented. Free and deterministic local two-task delivery acceptance pass; controlled live acceptance awaits explicit target authorization and protected MCP configuration.
 
 ## Technology stack
 

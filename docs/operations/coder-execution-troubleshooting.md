@@ -16,3 +16,14 @@ An infrastructure failure before the provider call should leave the run in `Wait
 Rollback logs contain only pipeline/task/attempt identifiers, task sequence, attempt number/type, the bounded failure code, and resulting status. If persistence itself fails, the worker emits those safe run/task identifiers plus the exception type and continues its polling loop. Do not add workspace paths, patch content, credentials, or provider response bodies to these logs.
 
 If EF reports a required-relationship conceptual null between `PlannedTask` and `TaskAttempt`, verify that the Application called `RemoveTransientAttempt` with the exact rollback result before `SaveChangesAsync`. Do not change the required foreign key, enable cascade deletion, or clear the complete change tracker as a workaround.
+
+## Task delivery and reconciliation
+
+Delivery and reconciliation are separate Workers. A delivery remains `ReadyForDelivery` / `Committing` while task records progress. Inspect only bounded failure codes and persisted safe identities; never log repository paths, patches, MCP payloads, or credentials.
+
+- `delivery_remote_branch_conflict`: the remote task branch points to an unexpected commit. Do not force-push; resolve ownership explicitly.
+- `delivery_pull_request_head_changed` or `delivery_pull_request_identity_changed`: external PR identity differs from the approved commit. The delivery must remain blocked.
+- `delivery_pull_request_closed`: the focused PR closed without merge. Do not silently create a replacement.
+- `github_mcp_unavailable` or `github_mcp_timeout`: the reconciliation lease is released and the pushed/awaiting checkpoint is retained for retry.
+
+Live delivery requires the same current build/database for API and Worker, all migrations, `Delivery__GitHubMcp__Enabled=true`, one exact `Delivery__GitHubMcp__AllowedRepositories__N` entry, and the configured token environment variable. The official server allowlist must remain exactly `list_pull_requests`, `pull_request_read`, and `create_pull_request`; no merge tool is supported. Confirm push authentication with `git ls-remote` from the delivery environment without embedding a token in the URL.
