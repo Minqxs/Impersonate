@@ -3,7 +3,7 @@ using Impersonate.Domain.Delivery;
 
 namespace Impersonate.Application.Delivery;
 
-internal sealed class TaskDeliveryReconciler(ITaskDeliveryRepository deliveries, IPipelineRunRepository runs, IPullRequestGateway pullRequests) : ITaskDeliveryReconciler
+internal sealed class TaskDeliveryReconciler(ITaskDeliveryRepository deliveries, IRunDeliveryRepository runDeliveries, IPullRequestGateway pullRequests) : ITaskDeliveryReconciler
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -29,12 +29,12 @@ internal sealed class TaskDeliveryReconciler(ITaskDeliveryRepository deliveries,
                 delivery.Block("delivery_pull_request_closed", "The task pull request was closed without merge.");
             else
             {
-                delivery.MarkMerged();
+                delivery.MarkMergedIntoRun();
                 delivery.ReleaseClaim();
-                var run = await runs.GetAsync(delivery.ProjectId, delivery.PipelineRunId, ct) ?? throw new InvalidOperationException("Delivery run was not found.");
-                if (run.Tasks.Where(x => x.Status == Domain.Pipelines.PlannedTaskStatus.Approved).All(task => run.Deliveries.SingleOrDefault(x => x.PlannedTaskId == task.Id)?.Status == TaskDeliveryStatus.Merged)
-                    && run.Deliveries.All(x => x.Status == TaskDeliveryStatus.Merged))
-                    run.CompleteDelivery();
+                var aggregate = await runDeliveries.GetByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct) ?? throw new InvalidOperationException("Run delivery was not found.");
+                if (!string.IsNullOrWhiteSpace(observation.MergeCommitSha))
+                    aggregate.RecordIntegratedHead(observation.MergeCommitSha);
+                await runDeliveries.SaveChangesAsync(ct);
             }
             return true;
         }

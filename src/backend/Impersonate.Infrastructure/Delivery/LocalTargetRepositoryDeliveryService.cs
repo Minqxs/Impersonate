@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Infrastructure.Delivery;
 
-internal sealed class LocalTargetRepositoryDeliveryService(IProjectRepository projects, ITaskDeliveryRepository deliveries, IExecutionArtifactStore artifacts, IDeliveryValidationService validation, DeliveryWorkspaceRegistry workspaces, SafeProcess process, IOptions<ExecutionOptions> options) : ITargetRepositoryDeliveryService
+internal sealed class LocalTargetRepositoryDeliveryService(IProjectRepository projects, ITaskDeliveryRepository deliveries, IRunDeliveryRepository runDeliveries, IExecutionArtifactStore artifacts, IDeliveryValidationService validation, DeliveryWorkspaceRegistry workspaces, SafeProcess process, IOptions<ExecutionOptions> options) : ITargetRepositoryDeliveryService
 {
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> Gates = new();
 
@@ -43,6 +43,9 @@ internal sealed class LocalTargetRepositoryDeliveryService(IProjectRepository pr
     private async Task<TargetRepositoryDeliveryResult> DeliverLockedAsync(TaskDelivery delivery, ApprovedTaskHandoff handoff, CancellationToken ct)
     {
         var project = await projects.GetAsync(delivery.ProjectId, ct) ?? throw new InvalidOperationException("delivery_project_not_found");
+        var runDelivery = await runDeliveries.GetByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct) ?? throw new InvalidOperationException("run_delivery_not_found");
+        if (runDelivery.Status != RunDeliveryStatus.IntegratingTasks || string.IsNullOrWhiteSpace(runDelivery.RunBranchHeadSha))
+            throw new InvalidOperationException("run_delivery_branch_not_ready");
         var root = Path.GetFullPath(options.Value.DeliveryRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Impersonate", "delivery"));
         var cache = Path.Combine(root, "repositories", delivery.ProjectId.ToString("N"), "repository.git");
         var workspace = Path.Combine(root, "worktrees", delivery.ProjectId.ToString("N"), delivery.Id.ToString("N"));
@@ -50,8 +53,10 @@ internal sealed class LocalTargetRepositoryDeliveryService(IProjectRepository pr
         Directory.CreateDirectory(Path.GetDirectoryName(workspace)!);
         if (!Directory.Exists(cache))
             await GitAsync(root, ["clone", "--bare", "--no-tags", "--", project.RepositoryUrl, cache], null, ct);
-        await GitAsync(cache, ["fetch", "--no-tags", "origin", $"+refs/heads/{project.DefaultBranch}:refs/remotes/origin/{project.DefaultBranch}"], null, ct);
-        var remoteBase = (await GitAsync(cache, ["rev-parse", $"refs/remotes/origin/{project.DefaultBranch}^{{commit}}"], null, ct)).Trim();
+        await GitAsync(cache, ["fetch", "--no-tags", "origin", $"+refs/heads/{runDelivery.RunBranchName}:refs/remotes/origin/{runDelivery.RunBranchName}"], null, ct);
+        var remoteBase = (await GitAsync(cache, ["rev-parse", $"refs/remotes/origin/{runDelivery.RunBranchName}^{{commit}}"], null, ct)).Trim();
+        if (!string.Equals(remoteBase, runDelivery.RunBranchHeadSha, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("run_delivery_branch_head_changed");
         var branch = delivery.BranchName ?? TaskBranchNameGenerator.Create(delivery.PipelineRunId, delivery.TaskSequence, handoff.Title, delivery.ApprovedPatchSha256);
         await GitAsync(cache, ["check-ref-format", "--branch", branch], null, ct);
 

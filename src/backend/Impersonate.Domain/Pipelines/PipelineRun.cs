@@ -446,9 +446,9 @@ public sealed class PipelineRun
         if (Status != PipelineRunStatus.ReadyForDelivery)
             throw Invalid($"Expected {PipelineRunStatus.ReadyForDelivery}; current state is {Status}.");
         var approved = tasks.Where(x => x.Status == PlannedTaskStatus.Approved).ToArray();
-        if (approved.Length == 0 || approved.Any(task => deliveries.SingleOrDefault(x => x.PlannedTaskId == task.Id)?.Status != TaskDeliveryStatus.Merged))
+        if (approved.Length == 0 || approved.Any(task => deliveries.SingleOrDefault(x => x.PlannedTaskId == task.Id)?.Status != TaskDeliveryStatus.MergedIntoRun))
             throw Invalid("Every approved task must have one merged delivery.");
-        if (deliveries.Any(x => x.Status != TaskDeliveryStatus.Merged))
+        if (deliveries.Any(x => x.Status != TaskDeliveryStatus.MergedIntoRun))
             throw Invalid("No unresolved delivery may remain.");
         var status = tasks.Any(x => x.Status == PlannedTaskStatus.Skipped) ? PipelineRunStatus.CompletedWithSkippedTasks : PipelineRunStatus.Completed;
         Transition(status, "DeliveryCompleted", "All approved task deliveries were merged.", at);
