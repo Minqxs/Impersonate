@@ -29,7 +29,7 @@ internal sealed class ConservativeDeliveryValidationService(DeliveryWorkspaceReg
 
     private static List<Command> BuildPlan(string root)
     {
-        var target = Directory.EnumerateFiles(root, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault() ?? Directory.EnumerateFiles(root, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+        var target = FindTarget(root, "*.sln") ?? FindTarget(root, "*.csproj");
         if (target is not null)
         {
             var plan = new List<Command> { new("dotnet-restore", "dotnet", ["restore", target]), new("dotnet-build", "dotnet", ["build", target, "--no-restore"]) };
@@ -45,6 +45,10 @@ internal sealed class ConservativeDeliveryValidationService(DeliveryWorkspaceReg
         foreach (var name in new[] { "lint", "test", "build" }) if (scripts.ValueKind == JsonValueKind.Object && scripts.TryGetProperty(name, out _)) nodePlan.Add(new($"npm-{name}", npm, ["run", name]));
         return nodePlan;
     }
+
+    private static string? FindTarget(string root, string pattern) => Directory.EnumerateFiles(root, pattern, SearchOption.AllDirectories)
+        .Where(path => !Path.GetRelativePath(root, path).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(segment => segment is ".git" or "node_modules" or "bin" or "obj"))
+        .Order(StringComparer.Ordinal).FirstOrDefault();
 
     private sealed record Command(string Name, string Executable, IReadOnlyList<string> Arguments);
 }
