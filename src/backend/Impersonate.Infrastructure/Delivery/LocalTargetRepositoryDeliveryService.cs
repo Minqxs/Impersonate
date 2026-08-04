@@ -74,13 +74,14 @@ internal sealed class LocalTargetRepositoryDeliveryService(IProjectRepository pr
 
         var patch = await artifacts.ReadTextAsync(handoff.ApprovedPatchArtifactReference, options.Value.MaximumArtifactBytes, ct);
         VerifyPatch(patch, handoff);
+        var gitPatch = patch.Replace("\r\n", "\n", StringComparison.Ordinal);
         if (delivery.Status == TaskDeliveryStatus.BranchPrepared)
         {
             var staged = await StagedFilesAsync(workspace, ct);
             if (staged.Count == 0)
             {
-                await GitAsync(workspace, ["apply", "--check", "--whitespace=error", "-"], patch, ct);
-                await GitAsync(workspace, ["apply", "--index", "--whitespace=error", "-"], patch, ct);
+                await GitAsync(workspace, ["apply", "--check", "--whitespace=error", "-"], gitPatch, ct);
+                await GitAsync(workspace, ["apply", "--index", "--whitespace=error", "-"], gitPatch, ct);
                 staged = await StagedFilesAsync(workspace, ct);
             }
             RepositoryFileSetVerifier.Verify("staged", staged, handoff.ChangedFiles);
