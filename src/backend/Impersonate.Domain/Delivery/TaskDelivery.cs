@@ -141,6 +141,14 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
+    public int DeliveryReviewAttemptCount
+    {
+        get; private set;
+    }
+    public int DeliveryRepairAttemptCount
+    {
+        get; private set;
+    }
     public bool IsActive => Status is not (TaskDeliveryStatus.MergedIntoRun or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled);
 
     public static TaskDelivery Create(Guid projectId, Guid runId, Guid taskId, int sequence, string sourceSha, string patchReference, string patchSha, Guid reviewId, DateTimeOffset? at = null)
@@ -275,11 +283,31 @@ public sealed class TaskDelivery
         Set(TaskDeliveryStatus.PullRequestOpen, at);
     }
     public void StartDeliveryReview(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.PullRequestOpen, TaskDeliveryStatus.DeliveryReview, at);
+    public void RecordDeliveryReviewAttempt(DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.DeliveryReview);
+        DeliveryReviewAttemptCount++;
+        UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+    }
+    public void RequestDeliveryChanges(DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.DeliveryReview);
+        DeliveryRepairAttemptCount++;
+        Set(TaskDeliveryStatus.ChangesRequested, at);
+    }
+    public void RecordRepairCommit(string commitSha, string validationSummaryJson, DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.ChangesRequested);
+        CommitSha = PushedCommitSha = PullRequestObservedHeadSha = Required(commitSha, 64);
+        ValidationSummaryJson = Required(validationSummaryJson, 16000);
+        PushedAtUtc = at ?? DateTimeOffset.UtcNow;
+        Set(TaskDeliveryStatus.DeliveryReview, at);
+    }
     public void ApproveForIntegration(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.DeliveryReview, TaskDeliveryStatus.ApprovedForIntegration, at);
     public void RequestMerge(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.ApprovedForIntegration, TaskDeliveryStatus.MergeRequested, at);
     public void MarkMergedIntoRun(DateTimeOffset? at = null)
     {
-        if (Status is not (TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.DeliveryReview or TaskDeliveryStatus.ApprovedForIntegration or TaskDeliveryStatus.MergeRequested) || PullRequestNumber is null || string.IsNullOrWhiteSpace(PullRequestRepository))
+        if (Status != TaskDeliveryStatus.MergeRequested || PullRequestNumber is null || string.IsNullOrWhiteSpace(PullRequestRepository))
             throw Invalid("Run integration requires an internal pull-request identity.");
         Set(TaskDeliveryStatus.MergedIntoRun, at, true);
     }

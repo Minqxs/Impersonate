@@ -9,6 +9,8 @@ public interface ITaskDeliveryRepository
     Task AddAsync(TaskDelivery delivery, CancellationToken cancellationToken);
     Task<TaskDelivery?> ClaimNextPendingAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken cancellationToken);
     Task<TaskDelivery?> ClaimNextReconciliationAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken cancellationToken) => Task.FromResult<TaskDelivery?>(null);
+    Task<TaskDelivery?> ClaimNextReviewAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken cancellationToken) => Task.FromResult<TaskDelivery?>(null);
+    Task<TaskDelivery?> ClaimNextRepairAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken cancellationToken) => Task.FromResult<TaskDelivery?>(null);
     async Task<TaskDelivery?> RecoverAsync(Guid projectId, Guid runId, Guid deliveryId, string approvedPatchSha256, Guid approvedReviewDecisionId, DateTimeOffset at, CancellationToken cancellationToken)
     {
         var delivery = (await ListByRunAsync(projectId, runId, cancellationToken)).SingleOrDefault(x => x.Id == deliveryId && x.ApprovedReviewDecisionId == approvedReviewDecisionId && string.Equals(x.ApprovedPatchSha256, approvedPatchSha256, StringComparison.OrdinalIgnoreCase) && x.Status is TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Failed && !(x.ClaimExpiresAtUtc > at));

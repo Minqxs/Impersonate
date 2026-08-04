@@ -75,6 +75,11 @@ public sealed class TaskDeliveryReconcilerTests
         delivery.RecordPushed("origin", "owner/repo", "feature/task", "commit");
         delivery.RecordPullRequestOpen("GitHubMCP:test", "owner/repo", 1, "https://github.com/owner/repo/pull/1", "feature/task", "main", "commit", DateTimeOffset.UtcNow);
         delivery.StartDeliveryReview();
+        if (state == PullRequestExternalState.Merged)
+        {
+            delivery.ApproveForIntegration();
+            delivery.RequestMerge();
+        }
         ((List<TaskDelivery>)typeof(PipelineRun).GetField("deliveries", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(run)!).Add(delivery);
         var repository = new Deliveries(delivery);
         var aggregate = RunDelivery.Create(run.ProjectId, run.Id, "main", "base", "impersonate/run-test");

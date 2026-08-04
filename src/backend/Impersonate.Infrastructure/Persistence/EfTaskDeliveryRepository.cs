@@ -46,6 +46,42 @@ internal sealed class EfTaskDeliveryRepository(ImpersonateDbContext db) : ITaskD
         }
         catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
     }
+    public async Task<TaskDelivery?> ClaimNextReviewAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var delivery = await db.TaskDeliveries.Where(x => x.Status == TaskDeliveryStatus.DeliveryReview && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
+        delivery.Claim(claimId, owner, expiresAt, claimedAt);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
+        catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
+    }
+    public async Task<TaskDelivery?> ClaimNextRepairAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var delivery = await db.TaskDeliveries.Where(x => x.Status == TaskDeliveryStatus.ChangesRequested && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
+        delivery.Claim(claimId, owner, expiresAt, claimedAt);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
+        catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
+    }
     public async Task<TaskDelivery?> RecoverAsync(Guid projectId, Guid runId, Guid deliveryId, string approvedPatchSha256, Guid approvedReviewDecisionId, DateTimeOffset at, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
