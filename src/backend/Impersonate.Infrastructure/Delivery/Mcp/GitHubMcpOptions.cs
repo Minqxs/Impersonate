@@ -2,7 +2,10 @@ namespace Impersonate.Infrastructure.Delivery.Mcp;
 
 public sealed class GitHubMcpOptions
 {
-    public bool Enabled { get; set; }
+    public bool Enabled
+    {
+        get; set;
+    }
     public string Transport { get; set; } = "Remote";
     public string ServerId { get; set; } = "github-official";
     public string RemoteUrl { get; set; } = "https://api.githubcopilot.com/mcp/";

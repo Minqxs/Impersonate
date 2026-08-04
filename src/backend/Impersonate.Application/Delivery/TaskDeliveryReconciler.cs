@@ -9,19 +9,24 @@ internal sealed class TaskDeliveryReconciler(ITaskDeliveryRepository deliveries,
     {
         var now = DateTimeOffset.UtcNow;
         var delivery = await deliveries.ClaimNextReconciliationAsync(Guid.NewGuid(), workerId, now, now.AddMinutes(5), ct);
-        if (delivery is null) return false;
+        if (delivery is null)
+            return false;
         try
         {
             var result = await pullRequests.ReadAsync(delivery, ct);
             if (!result.Succeeded)
             {
-                if (result.Code is "github_mcp_unavailable" or "github_mcp_timeout" or "github_mcp_authentication_unavailable" or "github_mcp_failed") delivery.ReleaseClaim();
-                else delivery.Block(result.Code ?? "delivery_reconciliation_failed", result.Error ?? "Pull-request reconciliation failed safely.");
+                if (result.Code is "github_mcp_unavailable" or "github_mcp_timeout" or "github_mcp_authentication_unavailable" or "github_mcp_failed")
+                    delivery.ReleaseClaim();
+                else
+                    delivery.Block(result.Code ?? "delivery_reconciliation_failed", result.Error ?? "Pull-request reconciliation failed safely.");
                 return true;
             }
             var observation = result.Value!;
-            if (observation.State == PullRequestExternalState.Open) delivery.ReleaseClaim();
-            else if (observation.State == PullRequestExternalState.Closed) delivery.Block("delivery_pull_request_closed", "The task pull request was closed without merge.");
+            if (observation.State == PullRequestExternalState.Open)
+                delivery.ReleaseClaim();
+            else if (observation.State == PullRequestExternalState.Closed)
+                delivery.Block("delivery_pull_request_closed", "The task pull request was closed without merge.");
             else
             {
                 delivery.MarkMerged();

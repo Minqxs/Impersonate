@@ -1,7 +1,7 @@
-using Impersonate.Application.Ai;
-using Impersonate.Infrastructure.Agents.Execution;
-using Impersonate.Domain.Pipelines;
 using System.Text.Json;
+using Impersonate.Application.Ai;
+using Impersonate.Domain.Pipelines;
+using Impersonate.Infrastructure.Agents.Execution;
 using Xunit;
 
 namespace Impersonate.IntegrationTests;

@@ -78,8 +78,12 @@ public sealed class TaskDeliveryTests
     public void Push_identity_must_match_the_approved_commit()
     {
         var delivery = Create();
-        delivery.StartPreparing(); delivery.RecordDeliveryBase("base"); delivery.RecordBranchPrepared("feature/task");
-        delivery.RecordPatchApplied(); delivery.RecordValidated(); delivery.RecordCommitted("approved");
+        delivery.StartPreparing();
+        delivery.RecordDeliveryBase("base");
+        delivery.RecordBranchPrepared("feature/task");
+        delivery.RecordPatchApplied();
+        delivery.RecordValidated();
+        delivery.RecordCommitted("approved");
         Assert.Throws<InvalidOperationException>(() => delivery.RecordPushed("origin", "owner/repo", "feature/task", "different"));
     }
 
@@ -87,8 +91,12 @@ public sealed class TaskDeliveryTests
     public void Recovery_resumes_the_pre_failure_checkpoint()
     {
         var delivery = Create();
-        delivery.StartPreparing(); delivery.RecordDeliveryBase("base"); delivery.RecordBranchPrepared("feature/task");
-        delivery.RecordPatchApplied(); delivery.RecordValidated(); delivery.RecordCommitted("approved");
+        delivery.StartPreparing();
+        delivery.RecordDeliveryBase("base");
+        delivery.RecordBranchPrepared("feature/task");
+        delivery.RecordPatchApplied();
+        delivery.RecordValidated();
+        delivery.RecordCommitted("approved");
         delivery.Block("delivery_push_failed", "Push failed.");
         delivery.Recover();
         Assert.Equal(TaskDeliveryStatus.Committed, delivery.Status);

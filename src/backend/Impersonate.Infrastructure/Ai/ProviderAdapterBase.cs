@@ -106,7 +106,10 @@ internal abstract class ProviderAdapterBase(HttpClient http, IOptions<ExecutionO
             }
             catch (ProviderRequestException ex) when (ex.Code == "provider_rate_limited")
             {
-                var capacity = ex.Capacity is null ? null : ex.Capacity with { CumulativeWaitMilliseconds = waited };
+                var capacity = ex.Capacity is null ? null : ex.Capacity with
+                {
+                    CumulativeWaitMilliseconds = waited
+                };
                 throw new ProviderRequestException(ex.Code, ex.Message, ex.StatusCode, ex.IsTransient, capacity);
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)

@@ -78,14 +78,18 @@ internal sealed class SafeProcess(IChildProcessEnvironmentBuilder environments, 
 
         void Append(string? line)
         {
-            if (line is null) return;
+            if (line is null)
+                return;
             lock (outputGate)
             {
-                if (output.Length >= outputLimit) return;
+                if (output.Length >= outputLimit)
+                    return;
                 var remaining = outputLimit - output.Length;
                 var take = Math.Min(line.Length, remaining);
-                if (take > 0) output.Append(line.AsSpan(0, take));
-                if (output.Length < outputLimit) output.AppendLine();
+                if (take > 0)
+                    output.Append(line.AsSpan(0, take));
+                if (output.Length < outputLimit)
+                    output.AppendLine();
             }
         }
     }

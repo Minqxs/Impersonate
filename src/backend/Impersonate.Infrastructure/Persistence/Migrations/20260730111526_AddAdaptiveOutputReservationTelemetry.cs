@@ -1,72 +1,71 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Impersonate.Infrastructure.Persistence.Migrations
+namespace Impersonate.Infrastructure.Persistence.Migrations;
+
+/// <inheritdoc />
+public partial class AddAdaptiveOutputReservationTelemetry : Migration
 {
     /// <inheritdoc />
-    public partial class AddAdaptiveOutputReservationTelemetry : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.AddColumn<string>(
-                name: "LastRateLimitScope",
-                table: "ExecutionInvocations",
-                type: "nvarchar(max)",
-                nullable: true);
+        migrationBuilder.AddColumn<string>(
+            name: "LastRateLimitScope",
+            table: "ExecutionInvocations",
+            type: "nvarchar(max)",
+            nullable: true);
 
-            migrationBuilder.AddColumn<int>(
-                name: "MaximumRequestedOutputReservation",
-                table: "ExecutionInvocations",
-                type: "int",
-                nullable: false,
-                defaultValue: 0);
+        migrationBuilder.AddColumn<int>(
+            name: "MaximumRequestedOutputReservation",
+            table: "ExecutionInvocations",
+            type: "int",
+            nullable: false,
+            defaultValue: 0);
 
-            migrationBuilder.AddColumn<string>(
-                name: "OutputReservationReasonsJson",
-                table: "ExecutionInvocations",
-                type: "nvarchar(max)",
-                nullable: false,
-                defaultValue: "[]");
+        migrationBuilder.AddColumn<string>(
+            name: "OutputReservationReasonsJson",
+            table: "ExecutionInvocations",
+            type: "nvarchar(max)",
+            nullable: false,
+            defaultValue: "[]");
 
-            migrationBuilder.AddColumn<long>(
-                name: "ProviderCapacityWaitMilliseconds",
-                table: "ExecutionInvocations",
-                type: "bigint",
-                nullable: false,
-                defaultValue: 0L);
+        migrationBuilder.AddColumn<long>(
+            name: "ProviderCapacityWaitMilliseconds",
+            table: "ExecutionInvocations",
+            type: "bigint",
+            nullable: false,
+            defaultValue: 0L);
 
-            migrationBuilder.AddColumn<bool>(
-                name: "ProviderResetUsed",
-                table: "ExecutionInvocations",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
-        }
+        migrationBuilder.AddColumn<bool>(
+            name: "ProviderResetUsed",
+            table: "ExecutionInvocations",
+            type: "bit",
+            nullable: false,
+            defaultValue: false);
+    }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropColumn(
-                name: "LastRateLimitScope",
-                table: "ExecutionInvocations");
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.DropColumn(
+            name: "LastRateLimitScope",
+            table: "ExecutionInvocations");
 
-            migrationBuilder.DropColumn(
-                name: "MaximumRequestedOutputReservation",
-                table: "ExecutionInvocations");
+        migrationBuilder.DropColumn(
+            name: "MaximumRequestedOutputReservation",
+            table: "ExecutionInvocations");
 
-            migrationBuilder.DropColumn(
-                name: "OutputReservationReasonsJson",
-                table: "ExecutionInvocations");
+        migrationBuilder.DropColumn(
+            name: "OutputReservationReasonsJson",
+            table: "ExecutionInvocations");
 
-            migrationBuilder.DropColumn(
-                name: "ProviderCapacityWaitMilliseconds",
-                table: "ExecutionInvocations");
+        migrationBuilder.DropColumn(
+            name: "ProviderCapacityWaitMilliseconds",
+            table: "ExecutionInvocations");
 
-            migrationBuilder.DropColumn(
-                name: "ProviderResetUsed",
-                table: "ExecutionInvocations");
-        }
+        migrationBuilder.DropColumn(
+            name: "ProviderResetUsed",
+            table: "ExecutionInvocations");
     }
 }

@@ -70,11 +70,23 @@ public sealed class ExecutionInvocation
     {
         get; private set;
     }
-    public int MaximumRequestedOutputReservation { get; private set; }
+    public int MaximumRequestedOutputReservation
+    {
+        get; private set;
+    }
     public string OutputReservationReasonsJson { get; private set; } = "[]";
-    public long ProviderCapacityWaitMilliseconds { get; private set; }
-    public bool ProviderResetUsed { get; private set; }
-    public string? LastRateLimitScope { get; private set; }
+    public long ProviderCapacityWaitMilliseconds
+    {
+        get; private set;
+    }
+    public bool ProviderResetUsed
+    {
+        get; private set;
+    }
+    public string? LastRateLimitScope
+    {
+        get; private set;
+    }
     public int ProviderRoundTripCount
     {
         get; private set;

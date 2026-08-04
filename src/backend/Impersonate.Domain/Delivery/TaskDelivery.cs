@@ -29,7 +29,10 @@ public sealed class TaskDelivery
         get; private set;
     }
     public string SourceBaseCommitSha { get; private set; } = null!;
-    public string? DeliveryBaseCommitSha { get; private set; }
+    public string? DeliveryBaseCommitSha
+    {
+        get; private set;
+    }
     public string ApprovedPatchArtifactReference { get; private set; } = null!;
     public string ApprovedPatchSha256 { get; private set; } = null!;
     public Guid ApprovedReviewDecisionId
@@ -49,16 +52,43 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
-    public string? RemoteName { get; private set; }
-    public string? RemoteRepository { get; private set; }
-    public string? RemoteBranchName { get; private set; }
-    public string? PushedCommitSha { get; private set; }
-    public DateTimeOffset? PushedAtUtc { get; private set; }
+    public string? RemoteName
+    {
+        get; private set;
+    }
+    public string? RemoteRepository
+    {
+        get; private set;
+    }
+    public string? RemoteBranchName
+    {
+        get; private set;
+    }
+    public string? PushedCommitSha
+    {
+        get; private set;
+    }
+    public DateTimeOffset? PushedAtUtc
+    {
+        get; private set;
+    }
     public string ValidationSummaryJson { get; private set; } = "[]";
-    public Guid? ClaimId { get; private set; }
-    public DateTimeOffset? ClaimedAtUtc { get; private set; }
-    public DateTimeOffset? ClaimExpiresAtUtc { get; private set; }
-    public string? ClaimOwner { get; private set; }
+    public Guid? ClaimId
+    {
+        get; private set;
+    }
+    public DateTimeOffset? ClaimedAtUtc
+    {
+        get; private set;
+    }
+    public DateTimeOffset? ClaimExpiresAtUtc
+    {
+        get; private set;
+    }
+    public string? ClaimOwner
+    {
+        get; private set;
+    }
     public string? PullRequestProvider
     {
         get; private set;
@@ -75,10 +105,22 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
-    public string? PullRequestHeadBranch { get; private set; }
-    public string? PullRequestBaseBranch { get; private set; }
-    public string? PullRequestObservedHeadSha { get; private set; }
-    public DateTimeOffset? PullRequestCreatedAtUtc { get; private set; }
+    public string? PullRequestHeadBranch
+    {
+        get; private set;
+    }
+    public string? PullRequestBaseBranch
+    {
+        get; private set;
+    }
+    public string? PullRequestObservedHeadSha
+    {
+        get; private set;
+    }
+    public DateTimeOffset? PullRequestCreatedAtUtc
+    {
+        get; private set;
+    }
     public string? FailureCode
     {
         get; private set;
@@ -142,40 +184,55 @@ public sealed class TaskDelivery
             throw Invalid("Delivery already has an active claim.");
         if (claimId == Guid.Empty || expiresAt <= now)
             throw new ArgumentException("A valid delivery claim is required.");
-        ClaimId = claimId; ClaimOwner = Required(owner, 200); ClaimedAtUtc = now; ClaimExpiresAtUtc = expiresAt; UpdatedAtUtc = now;
+        ClaimId = claimId;
+        ClaimOwner = Required(owner, 200);
+        ClaimedAtUtc = now;
+        ClaimExpiresAtUtc = expiresAt;
+        UpdatedAtUtc = now;
     }
     public void ReleaseClaim()
     {
-        ClaimId = null; ClaimOwner = null; ClaimedAtUtc = null; ClaimExpiresAtUtc = null;
+        ClaimId = null;
+        ClaimOwner = null;
+        ClaimedAtUtc = null;
+        ClaimExpiresAtUtc = null;
         UpdatedAtUtc = DateTimeOffset.UtcNow;
     }
     public void RecordDeliveryBase(string sha, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Preparing);
         var value = Required(sha, 64);
-        if (DeliveryBaseCommitSha is not null && !string.Equals(DeliveryBaseCommitSha, value, StringComparison.OrdinalIgnoreCase)) throw Invalid("Delivery base conflicts with the persisted identity.");
-        DeliveryBaseCommitSha = value; UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+        if (DeliveryBaseCommitSha is not null && !string.Equals(DeliveryBaseCommitSha, value, StringComparison.OrdinalIgnoreCase))
+            throw Invalid("Delivery base conflicts with the persisted identity.");
+        DeliveryBaseCommitSha = value;
+        UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
     }
     public void RecordBranchIntent(string branchName, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Preparing);
         var value = Required(branchName, 250);
-        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal)) throw Invalid("Branch name conflicts with the persisted identity.");
-        BranchName = value; UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
+        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal))
+            throw Invalid("Branch name conflicts with the persisted identity.");
+        BranchName = value;
+        UpdatedAtUtc = at ?? DateTimeOffset.UtcNow;
     }
     public void RecordBranchPrepared(string branchName, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Preparing);
-        if (string.IsNullOrWhiteSpace(DeliveryBaseCommitSha)) throw Invalid("Delivery base must be resolved before preparing a branch.");
+        if (string.IsNullOrWhiteSpace(DeliveryBaseCommitSha))
+            throw Invalid("Delivery base must be resolved before preparing a branch.");
         var value = Required(branchName, 250);
-        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal)) throw Invalid("Branch name conflicts with the persisted identity.");
+        if (BranchName is not null && !string.Equals(BranchName, value, StringComparison.Ordinal))
+            throw Invalid("Branch name conflicts with the persisted identity.");
         BranchName = value;
         Set(TaskDeliveryStatus.BranchPrepared, at);
     }
     public void RecordPatchApplied(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.BranchPrepared, TaskDeliveryStatus.PatchApplied, at);
     public void RecordValidated(string validationSummaryJson = "[]", DateTimeOffset? at = null)
     {
-        Ensure(TaskDeliveryStatus.PatchApplied); ValidationSummaryJson = Required(validationSummaryJson, 16000); Set(TaskDeliveryStatus.Validated, at);
+        Ensure(TaskDeliveryStatus.PatchApplied);
+        ValidationSummaryJson = Required(validationSummaryJson, 16000);
+        Set(TaskDeliveryStatus.Validated, at);
     }
     public void RecordCommitted(string commitSha, DateTimeOffset? at = null)
     {
@@ -187,7 +244,8 @@ public sealed class TaskDelivery
     {
         Ensure(TaskDeliveryStatus.Committed);
         var commit = Required(pushedCommitSha, 64);
-        if (!string.Equals(commit, CommitSha, StringComparison.OrdinalIgnoreCase)) throw Invalid("Pushed commit must match the approved delivery commit.");
+        if (!string.Equals(commit, CommitSha, StringComparison.OrdinalIgnoreCase))
+            throw Invalid("Pushed commit must match the approved delivery commit.");
         RemoteName = Required(remoteName, 50);
         RemoteRepository = Required(remoteRepository, 300);
         RemoteBranchName = Required(remoteBranchName, 250);
@@ -195,7 +253,10 @@ public sealed class TaskDelivery
         PushedAtUtc = at ?? DateTimeOffset.UtcNow;
         Set(TaskDeliveryStatus.Pushed, PushedAtUtc);
     }
-    public TaskDeliveryStatus? RecoveryStatus { get; private set; }
+    public TaskDeliveryStatus? RecoveryStatus
+    {
+        get; private set;
+    }
     public void RecordPullRequestOpen(string provider, string repository, long number, string safeUrl, string headBranch, string baseBranch, string observedHeadSha, DateTimeOffset createdAt, DateTimeOffset? at = null)
     {
         Ensure(TaskDeliveryStatus.Pushed);
@@ -208,7 +269,8 @@ public sealed class TaskDelivery
         PullRequestHeadBranch = Required(headBranch, 250);
         PullRequestBaseBranch = Required(baseBranch, 200);
         PullRequestObservedHeadSha = Required(observedHeadSha, 64);
-        if (!string.Equals(PullRequestObservedHeadSha, CommitSha, StringComparison.OrdinalIgnoreCase)) throw Invalid("Pull-request head must match the approved commit.");
+        if (!string.Equals(PullRequestObservedHeadSha, CommitSha, StringComparison.OrdinalIgnoreCase))
+            throw Invalid("Pull-request head must match the approved commit.");
         PullRequestCreatedAtUtc = createdAt;
         Set(TaskDeliveryStatus.PullRequestOpen, at);
     }
@@ -240,7 +302,8 @@ public sealed class TaskDelivery
         if (Status is not (TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked))
             throw Invalid("Only failed or blocked delivery can recover.");
         var resume = RecoveryStatus ?? TaskDeliveryStatus.Pending;
-        if (resume is TaskDeliveryStatus.Merged or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled) throw Invalid("Recovery checkpoint is invalid.");
+        if (resume is TaskDeliveryStatus.Merged or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled)
+            throw Invalid("Recovery checkpoint is invalid.");
         FailureCode = null;
         FailureMessage = null;
         RecoveryStatus = null;
