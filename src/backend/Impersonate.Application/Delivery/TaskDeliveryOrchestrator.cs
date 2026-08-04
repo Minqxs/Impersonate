@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Application.Delivery;
 
-internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, IRunDeliveryCoordinator runDeliveries, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IPullRequestGateway pullRequests, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
+internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliveries, ITaskDeliveryCoordinator coordinator, IRunDeliveryCoordinator runDeliveries, IRunIntegrationService integration, ITargetRepositoryDeliveryService target, ITaskDeliveryPushService push, IPullRequestGateway pullRequests, IProjectRepository projects, IPipelineRunRepository runs, IOptions<ExecutionOptions> options) : ITaskDeliveryOrchestrator
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -49,7 +49,7 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
                 {
                     var pr = opened.Value!;
                     delivery.RecordPullRequestOpen(pr.Provider, pr.Repository, pr.Number, pr.SafeUrl, pr.HeadBranch, pr.BaseBranch, pr.ObservedHeadSha, pr.CreatedAtUtc);
-                    delivery.AwaitMerge();
+                    delivery.StartDeliveryReview();
                 }
                 delivery.ReleaseClaim();
             }
@@ -67,6 +67,9 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
             {
                 var aggregate = await runDeliveries.GetOrCreateAsync(project.Id, run.Id, ct);
                 if (!aggregate.Succeeded)
+                    continue;
+                var prepared = await integration.PrepareAsync(aggregate.Value!, ct);
+                if (!prepared.Succeeded)
                     continue;
                 foreach (var item in await coordinator.GetEligibilityAsync(project.Id, run.Id, ct))
                     if (item.Eligible)

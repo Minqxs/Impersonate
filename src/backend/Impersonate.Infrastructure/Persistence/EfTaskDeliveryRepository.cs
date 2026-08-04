@@ -31,7 +31,7 @@ internal sealed class EfTaskDeliveryRepository(ImpersonateDbContext db) : ITaskD
     public async Task<TaskDelivery?> ClaimNextReconciliationAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
-        var delivery = await db.TaskDeliveries.Where(x => (x.Status == TaskDeliveryStatus.PullRequestOpen || x.Status == TaskDeliveryStatus.AwaitingMerge) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
+        var delivery = await db.TaskDeliveries.Where(x => (x.Status == TaskDeliveryStatus.PullRequestOpen || x.Status == TaskDeliveryStatus.DeliveryReview || x.Status == TaskDeliveryStatus.ApprovedForIntegration || x.Status == TaskDeliveryStatus.MergeRequested) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
         if (delivery is null)
         {
             await transaction.CommitAsync(ct);

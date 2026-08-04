@@ -26,7 +26,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 | 4 | GitHub MCP pull-request creation | PR #45 squash-merged as `462c8cba7e937dfb08a86406efa2194b709fc337`; official remote/local MCP transports, exact three-tool allowlist, repository allowlist, draft PR creation/recovery, safe identity persistence; 223 backend and 18 frontend tests passed | Complete | None |
 | 5 | Merge reconciliation and dependency unlocking | PR #46 squash-merged as `a5646ea07c16ea8ccd1798887625221b19d1d925`: dedicated leased worker, exact PR identity/head verification, open/merged/closed handling, dependent unlocking, run completion | Complete | None |
 | 6 | Full Milestone 6 acceptance | Live run `9c3c71f2-caa8-4d85-8d8c-31e2b379e85c` preserved | In progress | Recover Task 1 after the verification fix, then stop at its human merge checkpoint |
-| Redesign 1 | Run delivery aggregate | Branch `refactor/run-integration-delivery`; `RunDelivery`, deterministic run branch identity, additive persistence and safe projection | In progress | Validate and merge focused PR |
+| Redesign 1 | Run delivery aggregate | PR #51 merged as `b344e76`; `RunDelivery`, deterministic run branch identity, additive persistence and safe projection; 247 backend and 20 frontend tests passed | Complete | None |
+| Redesign 2 | Task PRs target run branch | Branch `refactor/task-prs-target-run-branch`; remote run-branch preparation, task bases and internal PR bases use the exact persisted run head | In progress | Validate and merge focused PR |
 
 ## Superseding delivery invariant
 
@@ -38,8 +39,8 @@ The final aggregate pull request is created only after aggregate validation and 
 
 | Phase | Branch | Scope | Status |
 |---|---|---|---|
-| 1 | `refactor/run-integration-delivery` | Run aggregate, deterministic identity, persistence, projections | In progress |
-| 2 | `refactor/task-prs-target-run-branch` | Internal task PRs target the run branch | Pending |
+| 1 | `refactor/run-integration-delivery` | Run aggregate, deterministic identity, persistence, projections | Complete in PR #51 |
+| 2 | `refactor/task-prs-target-run-branch` | Internal task PRs target the run branch | In progress |
 | 3 | `feat/task-pr-review-loop` | Exact-head delivery review and repair | Pending |
 | 4 | `feat/automatic-task-integration` | Automatic internal PR integration | Pending |
 | 5 | `feat/final-run-review-loop` | Aggregate refresh, validation, repair and review | Pending |
@@ -59,7 +60,7 @@ The final aggregate pull request is created only after aggregate validation and 
 
 ## Recovery and future completion
 
-Persistence records branch, commit, push, and pull-request progress for later recovery without duplicating external effects. Failure recovery is explicit. The reconciler completes the run only after all approved task deliveries are merged, skipped tasks remain visible, and no delivery is active.
+Persistence records branch, commit, push, and pull-request progress for later recovery without duplicating external effects. Failure recovery is explicit. Internal task integration never completes the pipeline run; the run remains `ReadyForDelivery` at `Committing` until its future final pull request is verified merged.
 
 ## Phase 6 live verification incident
 

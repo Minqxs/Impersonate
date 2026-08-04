@@ -28,7 +28,10 @@ public sealed class GitHubMcpPullRequestGatewayTests
         Assert.Equal(["list_pull_requests", "create_pull_request", "pull_request_read"], fixture.Mcp.Calls);
         var create = fixture.Mcp.Arguments[1];
         Assert.True(create.GetProperty("draft").GetBoolean());
+        Assert.Equal("impersonate/run-test", create.GetProperty("base").GetString());
+        Assert.NotEqual(fixture.Project.DefaultBranch, create.GetProperty("base").GetString());
         var body = create.GetProperty("body").GetString()!;
+        Assert.Contains("impersonate/run-test", body);
         Assert.Contains(fixture.Handoff.ApprovedPatchSha256, body);
         Assert.DoesNotContain(fixture.Handoff.ApprovedPatchArtifactReference, body);
     }
@@ -108,8 +111,8 @@ public sealed class GitHubMcpPullRequestGatewayTests
     public async Task Reconciliation_reads_exact_pr_state(string state, bool merged, PullRequestExternalState expected)
     {
         var fixture = new Fixture();
-        fixture.Delivery.RecordPullRequestOpen("GitHubMCP:fake-official", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "impersonate/task", "main", fixture.Delivery.CommitSha!, DateTimeOffset.UtcNow);
-        fixture.Delivery.AwaitMerge();
+        fixture.Delivery.RecordPullRequestOpen("GitHubMCP:fake-official", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "impersonate/task", "impersonate/run-test", fixture.Delivery.CommitSha!, DateTimeOffset.UtcNow);
+        fixture.Delivery.StartDeliveryReview();
         fixture.Mcp.Results.Enqueue(Json(PrObject(12, fixture.Delivery.CommitSha!, state, merged)));
         var result = await fixture.Gateway.ReadAsync(fixture.Delivery, default);
         Assert.True(result.Succeeded, result.Error);
@@ -121,8 +124,8 @@ public sealed class GitHubMcpPullRequestGatewayTests
     public async Task Reconciliation_blocks_changed_head_identity()
     {
         var fixture = new Fixture();
-        fixture.Delivery.RecordPullRequestOpen("GitHubMCP:fake-official", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "impersonate/task", "main", fixture.Delivery.CommitSha!, DateTimeOffset.UtcNow);
-        fixture.Delivery.AwaitMerge();
+        fixture.Delivery.RecordPullRequestOpen("GitHubMCP:fake-official", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "impersonate/task", "impersonate/run-test", fixture.Delivery.CommitSha!, DateTimeOffset.UtcNow);
+        fixture.Delivery.StartDeliveryReview();
         fixture.Mcp.Results.Enqueue(Json(PrObject(12, "unapproved")));
         var result = await fixture.Gateway.ReadAsync(fixture.Delivery, default);
         Assert.False(result.Succeeded);
@@ -141,6 +144,10 @@ public sealed class GitHubMcpPullRequestGatewayTests
             get;
         }
         public FakeMcpClient Mcp { get; } = new();
+        public RunDelivery Aggregate
+        {
+            get;
+        }
         public GitHubMcpPullRequestGateway Gateway
         {
             get;
@@ -156,8 +163,12 @@ public sealed class GitHubMcpPullRequestGatewayTests
             Delivery.RecordValidated("[]");
             Delivery.RecordCommitted("commit-sha");
             Delivery.RecordPushed("origin", "owner/repo", "impersonate/task", "commit-sha");
+            Aggregate = RunDelivery.Create(Project.Id, Delivery.PipelineRunId, "main", "base", "impersonate/run-test");
+            Aggregate.StartPreparing();
+            Aggregate.RecordRunBranch("base");
+            Aggregate.StartTaskIntegration();
             Handoff = new(Project.Id, Delivery.PipelineRunId, Delivery.PlannedTaskId, 1, "Focused task", "Description", ["It works"], [], "base", "artifact:secret-patch", "patch-sha", ["src/file.cs"], [], Delivery.ApprovedReviewDecisionId, "reviewer", "review-model", "Approved safely", "coder", "coder-model", Evidence(), Evidence(), Guid.NewGuid(), 1, 0);
-            Gateway = new(new ProjectRepository(Project), Mcp, Options.Create(OptionsValue()));
+            Gateway = new(new ProjectRepository(Project), new RunDeliveryRepository(Aggregate), Mcp, Options.Create(OptionsValue()));
         }
     }
     private sealed class FakeMcpClient : IGitHubMcpClient
@@ -178,6 +189,12 @@ public sealed class GitHubMcpPullRequestGatewayTests
     private sealed class ProjectRepository(Project project) : IProjectRepository
     {
         public Task<Project?> GetAsync(Guid id, CancellationToken ct) => Task.FromResult<Project?>(project); public Task AddAsync(Project p, CancellationToken ct) => Task.CompletedTask; public Task<IReadOnlyList<Project>> ListAsync(ProjectStatus? status, string? search, CancellationToken ct) => Task.FromResult<IReadOnlyList<Project>>([project]); public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+    private sealed class RunDeliveryRepository(RunDelivery delivery) : IRunDeliveryRepository
+    {
+        public Task<RunDelivery?> GetByRunAsync(Guid p, Guid r, CancellationToken ct) => Task.FromResult<RunDelivery?>(delivery);
+        public Task AddAsync(RunDelivery value, CancellationToken ct) => Task.CompletedTask;
+        public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
     private sealed class FakeMcpHandler : HttpMessageHandler
     {
@@ -217,5 +234,5 @@ public sealed class GitHubMcpPullRequestGatewayTests
     private static ModelSelectionEvidence Evidence() => new(Guid.NewGuid(), "AutomaticRouting", 1, "test", "v1", "[]");
     private static JsonElement Json<T>(T value) => JsonSerializer.SerializeToElement(value);
     private static JsonElement Pr(long number, string sha) => Json(PrObject(number, sha));
-    private static object PrObject(long number, string sha, string state = "open", bool merged = false) => new { number, html_url = $"https://github.com/owner/repo/pull/{number}", state, merged, head = new { @ref = "impersonate/task", sha }, @base = new { @ref = "main" }, created_at = "2026-07-31T00:00:00Z", merge_commit_sha = merged ? "merge-sha" : null };
+    private static object PrObject(long number, string sha, string state = "open", bool merged = false) => new { number, html_url = $"https://github.com/owner/repo/pull/{number}", state, merged, head = new { @ref = "impersonate/task", sha }, @base = new { @ref = "impersonate/run-test" }, created_at = "2026-07-31T00:00:00Z", merge_commit_sha = merged ? "merge-sha" : null };
 }

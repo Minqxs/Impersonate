@@ -85,7 +85,7 @@ internal sealed class TaskDeliveryCoordinator(IPipelineRunRepository runs, ITask
         return run.Tasks.OrderBy(x => x.Sequence).Select(task =>
         {
             var blockers = DeserializeGuids(task.DependsOnTaskIdsJson)
-                .Where(id => !existing.TryGetValue(id, out var dependency) || dependency.Status != TaskDeliveryStatus.Merged).ToArray();
+                .Where(id => !existing.TryGetValue(id, out var dependency) || dependency.Status != TaskDeliveryStatus.MergedIntoRun).ToArray();
             var eligible = runReady && task.Status == PlannedTaskStatus.Approved && !existing.ContainsKey(task.Id) && blockers.Length == 0;
             return new DeliveryEligibility(task.Id, eligible, blockers);
         }).ToList();

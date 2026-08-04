@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Infrastructure.Delivery.Mcp;
 
-internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, IGitHubMcpClient mcp, IOptions<GitHubMcpOptions> configured) : IPullRequestGateway
+internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, IRunDeliveryRepository runDeliveries, IGitHubMcpClient mcp, IOptions<GitHubMcpOptions> configured) : IPullRequestGateway
 {
     private readonly GitHubMcpOptions options = configured.Value;
 
@@ -22,15 +22,19 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         var project = await projects.GetAsync(delivery.ProjectId, ct);
         if (project is null)
             return Fail("delivery_project_not_found", "Delivery project was not found.");
+        var runDelivery = await runDeliveries.GetByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct);
+        if (runDelivery is null || runDelivery.Status != RunDeliveryStatus.IntegratingTasks)
+            return Fail("run_delivery_branch_not_ready", "Run integration branch is not ready for internal task pull requests.");
+        var baseBranch = runDelivery.RunBranchName;
         var repository = RepositoryIdentity(project.RepositoryUrl);
         if (repository is null || !string.Equals(repository, delivery.RemoteRepository, StringComparison.OrdinalIgnoreCase) || !options.AllowedRepositories.Contains(repository, StringComparer.OrdinalIgnoreCase))
             return Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP delivery.");
         var parts = repository.Split('/');
         try
         {
-            var existing = await FindAsync(parts[0], parts[1], project.DefaultBranch, delivery.RemoteBranchName, ct);
+            var existing = await FindAsync(parts[0], parts[1], baseBranch, delivery.RemoteBranchName, ct);
             if (existing is not null)
-                return Match(existing, delivery, repository, project.DefaultBranch);
+                return Match(existing, delivery, repository, baseBranch);
             JsonElement created;
             try
             {
@@ -40,8 +44,8 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
                     repo = parts[1],
                     title = handoff.Title,
                     head = delivery.RemoteBranchName,
-                    @base = project.DefaultBranch,
-                    body = Body(delivery, handoff),
+                    @base = baseBranch,
+                    body = Body(delivery, handoff, baseBranch),
                     draft = options.DraftPullRequests,
                     maintainer_can_modify = true
                 }, ct);
@@ -49,8 +53,8 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch
             {
-                existing = await FindAsync(parts[0], parts[1], project.DefaultBranch, delivery.RemoteBranchName, ct);
-                return existing is null ? Fail("github_mcp_create_failed", "GitHub MCP pull-request creation failed safely.") : Match(existing, delivery, repository, project.DefaultBranch);
+                existing = await FindAsync(parts[0], parts[1], baseBranch, delivery.RemoteBranchName, ct);
+                return existing is null ? Fail("github_mcp_create_failed", "GitHub MCP pull-request creation failed safely.") : Match(existing, delivery, repository, baseBranch);
             }
             var number = Long(created, "number") ?? Long(created, "pull_number") ?? throw new InvalidOperationException("github_mcp_malformed_response");
             var exact = await mcp.CallToolAsync("pull_request_read", new
@@ -60,7 +64,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
                 repo = parts[1],
                 pullNumber = number
             }, ct);
-            return Match(Parse(exact), delivery, repository, project.DefaultBranch);
+            return Match(Parse(exact), delivery, repository, baseBranch);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -74,7 +78,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
     {
         if (!string.Equals(delivery.PullRequestProvider, $"GitHubMCP:{mcp.ServerIdentity}", StringComparison.Ordinal))
             return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_server_not_allowed", "Recorded pull request belongs to a different MCP server.");
-        if (delivery.Status is not (TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.AwaitingMerge) || delivery.PullRequestNumber is null || string.IsNullOrWhiteSpace(delivery.PullRequestRepository))
+        if (delivery.Status is not (TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.DeliveryReview or TaskDeliveryStatus.ApprovedForIntegration or TaskDeliveryStatus.MergeRequested) || delivery.PullRequestNumber is null || string.IsNullOrWhiteSpace(delivery.PullRequestRepository))
             return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_reconciliation_state_invalid", "An open pull-request identity is required for reconciliation.");
         var parts = delivery.PullRequestRepository.Split('/');
         if (parts.Length != 2 || !options.AllowedRepositories.Contains(delivery.PullRequestRepository, StringComparer.OrdinalIgnoreCase))
@@ -132,10 +136,10 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             return Fail("github_mcp_malformed_response", "GitHub MCP returned an unsafe pull-request URL.");
         return DeliveryOperationResult<PullRequestReference>.Ok(new($"GitHubMCP:{mcp.ServerIdentity}", repository, pull.Number, pull.Url, pull.HeadBranch, pull.BaseBranch, pull.HeadSha, pull.CreatedAt));
     }
-    private static string Body(TaskDelivery delivery, ApprovedTaskHandoff handoff)
+    private static string Body(TaskDelivery delivery, ApprovedTaskHandoff handoff, string runBranch)
     {
         var text = new StringBuilder();
-        text.AppendLine($"Pipeline run: `{handoff.PipelineRunId}`").AppendLine($"Task: {handoff.TaskSequence} — {handoff.Title}").AppendLine().AppendLine(handoff.Description).AppendLine().AppendLine("Acceptance criteria:");
+        text.AppendLine($"Pipeline run: `{handoff.PipelineRunId}`").AppendLine($"Run branch: `{runBranch}`").AppendLine($"Task: {handoff.TaskSequence} — {handoff.Title}").AppendLine().AppendLine(handoff.Description).AppendLine().AppendLine("Acceptance criteria:");
         foreach (var item in handoff.AcceptanceCriteria)
             text.AppendLine($"- {item}");
         text.AppendLine().AppendLine("Changed files:");

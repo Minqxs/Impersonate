@@ -141,7 +141,7 @@ public sealed class TaskDelivery
     {
         get; private set;
     }
-    public bool IsActive => Status is not (TaskDeliveryStatus.Merged or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled);
+    public bool IsActive => Status is not (TaskDeliveryStatus.MergedIntoRun or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled);
 
     public static TaskDelivery Create(Guid projectId, Guid runId, Guid taskId, int sequence, string sourceSha, string patchReference, string patchSha, Guid reviewId, DateTimeOffset? at = null)
     {
@@ -274,12 +274,14 @@ public sealed class TaskDelivery
         PullRequestCreatedAtUtc = createdAt;
         Set(TaskDeliveryStatus.PullRequestOpen, at);
     }
-    public void AwaitMerge(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.PullRequestOpen, TaskDeliveryStatus.AwaitingMerge, at);
-    public void MarkMerged(DateTimeOffset? at = null)
+    public void StartDeliveryReview(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.PullRequestOpen, TaskDeliveryStatus.DeliveryReview, at);
+    public void ApproveForIntegration(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.DeliveryReview, TaskDeliveryStatus.ApprovedForIntegration, at);
+    public void RequestMerge(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.ApprovedForIntegration, TaskDeliveryStatus.MergeRequested, at);
+    public void MarkMergedIntoRun(DateTimeOffset? at = null)
     {
-        if (Status is not (TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.AwaitingMerge) || PullRequestNumber is null || string.IsNullOrWhiteSpace(PullRequestRepository))
-            throw Invalid("Merged delivery requires an open pull-request identity.");
-        Set(TaskDeliveryStatus.Merged, at, true);
+        if (Status is not (TaskDeliveryStatus.PullRequestOpen or TaskDeliveryStatus.DeliveryReview or TaskDeliveryStatus.ApprovedForIntegration or TaskDeliveryStatus.MergeRequested) || PullRequestNumber is null || string.IsNullOrWhiteSpace(PullRequestRepository))
+            throw Invalid("Run integration requires an internal pull-request identity.");
+        Set(TaskDeliveryStatus.MergedIntoRun, at, true);
     }
     public void Fail(string code, string message, DateTimeOffset? at = null)
     {
@@ -302,7 +304,7 @@ public sealed class TaskDelivery
         if (Status is not (TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked))
             throw Invalid("Only failed or blocked delivery can recover.");
         var resume = RecoveryStatus ?? TaskDeliveryStatus.Pending;
-        if (resume is TaskDeliveryStatus.Merged or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled)
+        if (resume is TaskDeliveryStatus.MergedIntoRun or TaskDeliveryStatus.Failed or TaskDeliveryStatus.Blocked or TaskDeliveryStatus.Cancelled)
             throw Invalid("Recovery checkpoint is invalid.");
         FailureCode = null;
         FailureMessage = null;

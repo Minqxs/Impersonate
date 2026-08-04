@@ -18,9 +18,9 @@ public sealed class TaskDeliveryTests
         delivery.RecordCommitted("abc123");
         delivery.RecordPushed("origin", "owner/repo", "feature/task-1", "abc123");
         delivery.RecordPullRequestOpen("GitHub", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "feature/task-1", "main", "abc123", DateTimeOffset.UtcNow);
-        delivery.AwaitMerge();
-        delivery.MarkMerged();
-        Assert.Equal(TaskDeliveryStatus.Merged, delivery.Status);
+        delivery.StartDeliveryReview();
+        delivery.MarkMergedIntoRun();
+        Assert.Equal(TaskDeliveryStatus.MergedIntoRun, delivery.Status);
         Assert.NotNull(delivery.CompletedAtUtc);
     }
 
@@ -29,7 +29,7 @@ public sealed class TaskDeliveryTests
     {
         var delivery = Create();
         Assert.Throws<InvalidOperationException>(() => delivery.RecordPullRequestOpen("GitHub", "owner/repo", 1, "safe", "feature/task", "main", "commit", DateTimeOffset.UtcNow));
-        Assert.Throws<InvalidOperationException>(() => delivery.MarkMerged());
+        Assert.Throws<InvalidOperationException>(() => delivery.MarkMergedIntoRun());
     }
 
     [Fact]
