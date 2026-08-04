@@ -37,9 +37,7 @@ public sealed class LocalTaskDeliveryTests
             Git(source, "commit", "-m", "initial");
             var baseSha = Git(source, "rev-parse", "HEAD").Trim();
             await File.WriteAllTextAsync(file, "after\n");
-            var patch = Git(source, "diff", "--", relative);
-            var header = $"diff --git a/{relative} b/{relative}\n";
-            patch = patch.Replace(header, header.TrimEnd('\n') + "\r\n", StringComparison.Ordinal);
+            var patch = Git(source, "diff", "--", relative).Replace("\n", "\r\n", StringComparison.Ordinal);
             Git(source, "restore", relative);
             var sha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(patch))).ToLowerInvariant();
             var project = Project.Create("Live", null, "https://github.com/owner/repository", "main");
