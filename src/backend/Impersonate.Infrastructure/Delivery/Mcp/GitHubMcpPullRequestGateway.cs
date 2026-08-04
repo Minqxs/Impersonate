@@ -111,6 +111,41 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         }
     }
 
+    public async Task<DeliveryOperationResult<PullRequestReviewContext>> ReadReviewContextAsync(TaskDelivery delivery, CancellationToken ct)
+    {
+        var observed = await ReadAsync(delivery, ct);
+        if (!observed.Succeeded)
+            return DeliveryOperationResult<PullRequestReviewContext>.Fail(observed.Code!, observed.Error!);
+        if (observed.Value!.State != PullRequestExternalState.Open)
+            return DeliveryOperationResult<PullRequestReviewContext>.Fail("delivery_pull_request_not_open", "Only an open task pull request can be reviewed.");
+        var parts = delivery.PullRequestRepository!.Split('/');
+        try
+        {
+            var exact = await mcp.CallToolAsync("pull_request_read", new
+            {
+                method = "get",
+                owner = parts[0],
+                repo = parts[1],
+                pullNumber = delivery.PullRequestNumber!.Value
+            }, ct);
+            var pull = Parse(exact);
+            var value = await mcp.CallToolAsync("pull_request_read", new
+            {
+                method = "get_diff",
+                owner = parts[0],
+                repo = parts[1],
+                pullNumber = delivery.PullRequestNumber.Value
+            }, ct);
+            var diff = DiffText(value);
+            if (string.IsNullOrWhiteSpace(diff))
+                return DeliveryOperationResult<PullRequestReviewContext>.Fail("delivery_pull_request_diff_empty", "The task pull request has no reviewable diff.");
+            var files = diff.Split('\n').Where(x => x.StartsWith("+++ b/", StringComparison.Ordinal)).Select(x => x[6..].Trim()).Distinct(StringComparer.Ordinal).ToArray();
+            return DeliveryOperationResult<PullRequestReviewContext>.Ok(new(pull.HeadSha, pull.BaseSha, diff, files));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return DeliveryOperationResult<PullRequestReviewContext>.Fail("github_mcp_failed", "GitHub MCP pull-request review context failed safely."); }
+    }
+
     private async Task<PullRequest?> FindAsync(string owner, string repo, string baseBranch, string headBranch, CancellationToken ct)
     {
         var result = await mcp.CallToolAsync("list_pull_requests", new
@@ -170,7 +205,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         var @base = value.TryGetProperty("base", out var b) ? b : default;
         if (!DateTimeOffset.TryParse(Text(value, "created_at") ?? Text(value, "createdAt"), out var created))
             throw new InvalidOperationException("github_mcp_malformed_response");
-        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"));
+        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", Text(@base, "sha") ?? Text(value, "base_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"));
     }
     private static string? Text(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
     private static long? Long(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : null;
@@ -184,5 +219,14 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         return $"{p[0]}/{(p[1].EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? p[1][..^4] : p[1])}";
     }
     private static DeliveryOperationResult<PullRequestReference> Fail(string code, string error) => DeliveryOperationResult<PullRequestReference>.Fail(code, error);
-    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, DateTimeOffset CreatedAt, string? MergeCommitSha);
+    private static string DiffText(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.String)
+            return value.GetString() ?? "";
+        foreach (var name in new[] { "diff", "content", "result" })
+            if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String)
+                return item.GetString() ?? "";
+        throw new InvalidOperationException("github_mcp_malformed_response");
+    }
+    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, string BaseSha, DateTimeOffset CreatedAt, string? MergeCommitSha);
 }

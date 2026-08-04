@@ -29,6 +29,11 @@ internal sealed class TaskDeliveryReconciler(ITaskDeliveryRepository deliveries,
                 delivery.Block("delivery_pull_request_closed", "The task pull request was closed without merge.");
             else
             {
+                if (delivery.Status != TaskDeliveryStatus.MergeRequested)
+                {
+                    delivery.Block("delivery_merged_without_approval", "The task pull request merged without an exact-head delivery approval.");
+                    return true;
+                }
                 delivery.MarkMergedIntoRun();
                 delivery.ReleaseClaim();
                 var aggregate = await runDeliveries.GetByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct) ?? throw new InvalidOperationException("Run delivery was not found.");

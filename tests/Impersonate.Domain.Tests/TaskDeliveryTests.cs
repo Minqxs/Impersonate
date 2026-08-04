@@ -19,6 +19,8 @@ public sealed class TaskDeliveryTests
         delivery.RecordPushed("origin", "owner/repo", "feature/task-1", "abc123");
         delivery.RecordPullRequestOpen("GitHub", "owner/repo", 12, "https://github.com/owner/repo/pull/12", "feature/task-1", "main", "abc123", DateTimeOffset.UtcNow);
         delivery.StartDeliveryReview();
+        delivery.ApproveForIntegration();
+        delivery.RequestMerge();
         delivery.MarkMergedIntoRun();
         Assert.Equal(TaskDeliveryStatus.MergedIntoRun, delivery.Status);
         Assert.NotNull(delivery.CompletedAtUtc);
@@ -100,6 +102,47 @@ public sealed class TaskDeliveryTests
         delivery.Block("delivery_push_failed", "Push failed.");
         delivery.Recover();
         Assert.Equal(TaskDeliveryStatus.Committed, delivery.Status);
+    }
+
+    [Fact]
+    public void Changes_requested_repair_replaces_the_exact_pull_request_head()
+    {
+        var delivery = CreateAtDeliveryReview("original");
+        delivery.RecordDeliveryReviewAttempt();
+        delivery.RequestDeliveryChanges();
+        delivery.RecordRepairCommit("repaired", "[]");
+
+        Assert.Equal(TaskDeliveryStatus.DeliveryReview, delivery.Status);
+        Assert.Equal("repaired", delivery.CommitSha);
+        Assert.Equal("repaired", delivery.PushedCommitSha);
+        Assert.Equal("repaired", delivery.PullRequestObservedHeadSha);
+        Assert.Equal(1, delivery.DeliveryReviewAttemptCount);
+        Assert.Equal(1, delivery.DeliveryRepairAttemptCount);
+    }
+
+    [Fact]
+    public void Delivery_review_is_bound_to_an_exact_head_and_can_be_superseded()
+    {
+        var review = TaskDeliveryReview.Create(Guid.NewGuid(), 1, "OpenAI", "reviewer", "abc123", DeliveryReviewDecision.Approved, "Approved exact head.", "[]");
+        Assert.True(review.IsCurrent);
+        review.Supersede();
+        Assert.False(review.IsCurrent);
+        Assert.Throws<InvalidOperationException>(() => review.Supersede());
+    }
+
+    private static TaskDelivery CreateAtDeliveryReview(string commit)
+    {
+        var delivery = Create();
+        delivery.StartPreparing();
+        delivery.RecordDeliveryBase("base");
+        delivery.RecordBranchPrepared("feature/task");
+        delivery.RecordPatchApplied();
+        delivery.RecordValidated();
+        delivery.RecordCommitted(commit);
+        delivery.RecordPushed("origin", "owner/repo", "feature/task", commit);
+        delivery.RecordPullRequestOpen("GitHub", "owner/repo", 1, "https://github.com/owner/repo/pull/1", "feature/task", "run/branch", commit, DateTimeOffset.UtcNow);
+        delivery.StartDeliveryReview();
+        return delivery;
     }
 
     private static TaskDelivery Create() => TaskDelivery.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, "base", "artifact:patch", "patch", Guid.NewGuid());

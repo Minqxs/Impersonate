@@ -16,6 +16,7 @@ public static class DependencyInjection
         .AddScoped<IRunDeliveryCoordinator, RunDeliveryCoordinator>()
         .AddScoped<ITaskDeliveryOrchestrator, TaskDeliveryOrchestrator>()
         .AddScoped<ITaskDeliveryReconciler, TaskDeliveryReconciler>()
+        .AddScoped<ITaskDeliveryReviewer, TaskDeliveryReviewer>()
         .AddScoped<ITaskDeliveryRecoveryService, TaskDeliveryRecoveryService>()
         .AddScoped<Execution.ITaskExecutionOrchestrator, Execution.TaskExecutionOrchestrator>()
         .AddSingleton<ILoopDefinitionRegistry, FeatureDeliveryLoopRegistry>()
