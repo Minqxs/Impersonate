@@ -13,12 +13,14 @@ internal sealed class ConservativeDeliveryValidationService(DeliveryWorkspaceReg
         {
             var root = workspaces.Resolve(workspace);
             var plan = BuildPlan(root);
-            if (plan.Count == 0) return DeliveryOperationResult<IReadOnlyList<DeliveryValidationStep>>.Fail("delivery_validation_unavailable", "No conservative validation plan is declared by this repository.");
+            if (plan.Count == 0)
+                return DeliveryOperationResult<IReadOnlyList<DeliveryValidationStep>>.Fail("delivery_validation_unavailable", "No conservative validation plan is declared by this repository.");
             var results = new List<DeliveryValidationStep>();
             foreach (var step in plan)
             {
                 var result = await process.RunAsync(step.Executable, step.Arguments, root, options.Value.CommandTimeoutSeconds, 4000, null, ct);
-                if (!result.Succeeded) return DeliveryOperationResult<IReadOnlyList<DeliveryValidationStep>>.Fail("delivery_validation_failed", $"Validation step {step.Name} failed.");
+                if (!result.Succeeded)
+                    return DeliveryOperationResult<IReadOnlyList<DeliveryValidationStep>>.Fail("delivery_validation_failed", $"Validation step {step.Name} failed.");
                 results.Add(new(step.Name, true, "Completed successfully."));
             }
             return DeliveryOperationResult<IReadOnlyList<DeliveryValidationStep>>.Ok(results);
@@ -33,16 +35,20 @@ internal sealed class ConservativeDeliveryValidationService(DeliveryWorkspaceReg
         if (target is not null)
         {
             var plan = new List<Command> { new("dotnet-restore", "dotnet", ["restore", target]), new("dotnet-build", "dotnet", ["build", target, "--no-restore"]) };
-            if (Directory.EnumerateFiles(root, "*Tests.csproj", SearchOption.AllDirectories).Any()) plan.Add(new("dotnet-test", "dotnet", ["test", target, "--no-build"]));
+            if (Directory.EnumerateFiles(root, "*Tests.csproj", SearchOption.AllDirectories).Any())
+                plan.Add(new("dotnet-test", "dotnet", ["test", target, "--no-build"]));
             return plan;
         }
         var package = Path.Combine(root, "package.json");
-        if (!File.Exists(package) || !File.Exists(Path.Combine(root, "package-lock.json"))) return [];
+        if (!File.Exists(package) || !File.Exists(Path.Combine(root, "package-lock.json")))
+            return [];
         using var document = JsonDocument.Parse(File.ReadAllText(package));
         var scripts = document.RootElement.TryGetProperty("scripts", out var value) ? value : default;
         var npm = OperatingSystem.IsWindows() ? "npm.cmd" : "npm";
         var nodePlan = new List<Command> { new("npm-ci", npm, ["ci", "--ignore-scripts"]) };
-        foreach (var name in new[] { "lint", "test", "build" }) if (scripts.ValueKind == JsonValueKind.Object && scripts.TryGetProperty(name, out _)) nodePlan.Add(new($"npm-{name}", npm, ["run", name]));
+        foreach (var name in new[] { "lint", "test", "build" })
+            if (scripts.ValueKind == JsonValueKind.Object && scripts.TryGetProperty(name, out _))
+                nodePlan.Add(new($"npm-{name}", npm, ["run", name]));
         return nodePlan;
     }
 

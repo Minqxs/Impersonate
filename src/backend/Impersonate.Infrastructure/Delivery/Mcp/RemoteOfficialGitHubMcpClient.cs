@@ -17,20 +17,45 @@ internal sealed class RemoteOfficialGitHubMcpClient(HttpClient http, IOptions<Gi
     {
         EnsureAllowed(tool);
         await InitializeAsync(ct);
-        return await SendAsync("tools/call", new { name = tool, arguments }, ct);
+        return await SendAsync("tools/call", new
+        {
+            name = tool,
+            arguments
+        }, ct);
     }
 
     private async Task InitializeAsync(CancellationToken ct)
     {
-        if (sessionId is not null) return;
+        if (sessionId is not null)
+            return;
         await initializeGate.WaitAsync(ct);
         try
         {
-            if (sessionId is not null) return;
-            await SendAsync("initialize", new { protocolVersion = "2025-06-18", capabilities = new { }, clientInfo = new { name = "Impersonate", version = "1.0" } }, ct, initialize: true);
-            using var request = Request(new { jsonrpc = "2.0", method = "notifications/initialized", @params = new { } });
+            if (sessionId is not null)
+                return;
+            await SendAsync("initialize", new
+            {
+                protocolVersion = "2025-06-18",
+                capabilities = new
+                {
+                },
+                clientInfo = new
+                {
+                    name = "Impersonate",
+                    version = "1.0"
+                }
+            }, ct, initialize: true);
+            using var request = Request(new
+            {
+                jsonrpc = "2.0",
+                method = "notifications/initialized",
+                @params = new
+                {
+                }
+            });
             using var response = await http.SendAsync(request, ct);
-            if (!response.IsSuccessStatusCode) throw new InvalidOperationException("github_mcp_initialization_failed");
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException("github_mcp_initialization_failed");
         }
         finally { initializeGate.Release(); }
     }
@@ -38,16 +63,24 @@ internal sealed class RemoteOfficialGitHubMcpClient(HttpClient http, IOptions<Gi
     private async Task<JsonElement> SendAsync(string method, object parameters, CancellationToken ct, bool initialize = false)
     {
         var id = Interlocked.Increment(ref nextId);
-        using var request = Request(new { jsonrpc = "2.0", id, method, @params = parameters });
-        using var response = await http.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(response.StatusCode switch
+        using var request = Request(new
         {
-            System.Net.HttpStatusCode.Unauthorized => "github_mcp_authentication_unavailable",
-            System.Net.HttpStatusCode.Forbidden => "github_mcp_permission_denied",
-            System.Net.HttpStatusCode.NotFound => "github_mcp_pull_request_not_found",
-            _ => "github_mcp_unavailable"
+            jsonrpc = "2.0",
+            id,
+            method,
+            @params = parameters
         });
-        if (initialize && response.Headers.TryGetValues("Mcp-Session-Id", out var values)) sessionId = values.SingleOrDefault();
+        using var response = await http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized => "github_mcp_authentication_unavailable",
+                System.Net.HttpStatusCode.Forbidden => "github_mcp_permission_denied",
+                System.Net.HttpStatusCode.NotFound => "github_mcp_pull_request_not_found",
+                _ => "github_mcp_unavailable"
+            });
+        if (initialize && response.Headers.TryGetValues("Mcp-Session-Id", out var values))
+            sessionId = values.SingleOrDefault();
         var payload = await response.Content.ReadAsStringAsync(ct);
         return McpJson.Result(payload, id);
     }
@@ -59,14 +92,18 @@ internal sealed class RemoteOfficialGitHubMcpClient(HttpClient http, IOptions<Gi
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
         request.Headers.TryAddWithoutValidation("X-MCP-Tools", string.Join(',', options.Tools));
         request.Headers.TryAddWithoutValidation("X-MCP-Readonly", "false");
-        if (sessionId is not null) request.Headers.TryAddWithoutValidation("Mcp-Session-Id", sessionId);
+        if (sessionId is not null)
+            request.Headers.TryAddWithoutValidation("Mcp-Session-Id", sessionId);
         var token = Environment.GetEnvironmentVariable(options.TokenEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(token)) request.Headers.Authorization = new("Bearer", token);
+        if (!string.IsNullOrWhiteSpace(token))
+            request.Headers.Authorization = new("Bearer", token);
         return request;
     }
     private void EnsureAllowed(string tool)
     {
-        if (!options.Enabled || !options.Tools.Contains(tool, StringComparer.Ordinal) || options.Tools.Except(["list_pull_requests", "pull_request_read", "create_pull_request"], StringComparer.Ordinal).Any()) throw new InvalidOperationException("github_mcp_tool_not_allowed");
-        if (!Uri.TryCreate(options.RemoteUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !string.Equals(uri.Host, "api.githubcopilot.com", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("github_mcp_server_not_allowed");
+        if (!options.Enabled || !options.Tools.Contains(tool, StringComparer.Ordinal) || options.Tools.Except(["list_pull_requests", "pull_request_read", "create_pull_request"], StringComparer.Ordinal).Any())
+            throw new InvalidOperationException("github_mcp_tool_not_allowed");
+        if (!Uri.TryCreate(options.RemoteUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !string.Equals(uri.Host, "api.githubcopilot.com", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("github_mcp_server_not_allowed");
     }
 }

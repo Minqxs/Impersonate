@@ -12,7 +12,8 @@ public sealed class TaskDeliveryWorker(IServiceScopeFactory scopes, ILogger<Task
             try
             {
                 using var scope = scopes.CreateScope();
-                if (!await scope.ServiceProvider.GetRequiredService<ITaskDeliveryOrchestrator>().ProcessOneAsync(workerId, stoppingToken)) await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                if (!await scope.ServiceProvider.GetRequiredService<ITaskDeliveryOrchestrator>().ProcessOneAsync(workerId, stoppingToken))
+                    await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception ex) { logger.LogError(ex, "Task delivery polling cycle failed."); await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }

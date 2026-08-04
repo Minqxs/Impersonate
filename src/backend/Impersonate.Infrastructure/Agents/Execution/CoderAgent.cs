@@ -249,7 +249,14 @@ internal sealed class CoderAgent(IEnumerable<IAiProviderAdapter> adapters, IProv
                 providerRemainingTokens = terminalCapacity.RemainingTokens;
                 reservationReasons.Add($"Terminal provider capacity: scope {terminalCapacity.Scope}, remaining tokens {terminalCapacity.RemainingTokens?.ToString() ?? "unknown"}, reset metadata {(providerResetUsed ? "present" : "absent")}.");
             }
-            return result with { MaximumRequestedOutputReservation = maximumReservation, OutputReservationReasons = reservationReasons, ProviderCapacityWaitMilliseconds = capacityWait, ProviderResetUsed = providerResetUsed, LastRateLimitScope = lastRateLimitScope?.ToString() };
+            return result with
+            {
+                MaximumRequestedOutputReservation = maximumReservation,
+                OutputReservationReasons = reservationReasons,
+                ProviderCapacityWaitMilliseconds = capacityWait,
+                ProviderResetUsed = providerResetUsed,
+                LastRateLimitScope = lastRateLimitScope?.ToString()
+            };
         }
     }
 

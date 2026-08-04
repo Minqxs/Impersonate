@@ -13,23 +13,44 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
         await MaterializeEligibleDeliveriesAsync(ct);
         var now = DateTimeOffset.UtcNow;
         var delivery = await deliveries.ClaimNextPendingAsync(Guid.NewGuid(), workerId, now, now.AddMinutes(options.Value.ClaimMinutes), ct);
-        if (delivery is null) return false;
+        if (delivery is null)
+            return false;
         try
         {
             var handoff = await coordinator.BuildHandoffAsync(delivery.ProjectId, delivery.PipelineRunId, delivery.PlannedTaskId, ct);
-            if (!handoff.Succeeded) { delivery.Block(handoff.Code ?? "delivery_handoff_invalid", handoff.Error ?? "Delivery handoff is invalid."); delivery.ReleaseClaim(); }
+            if (!handoff.Succeeded)
+            {
+                delivery.Block(handoff.Code ?? "delivery_handoff_invalid", handoff.Error ?? "Delivery handoff is invalid.");
+                delivery.ReleaseClaim();
+            }
             else
             {
                 if (delivery.Status != Domain.Delivery.TaskDeliveryStatus.Pushed)
                 {
                     var local = await target.DeliverApprovedPatchAsync(delivery, handoff.Value!, ct);
-                    if (!local.Succeeded) { delivery.Block(local.Code ?? "delivery_failed", local.Error ?? "Local delivery preparation failed safely."); delivery.ReleaseClaim(); return true; }
+                    if (!local.Succeeded)
+                    {
+                        delivery.Block(local.Code ?? "delivery_failed", local.Error ?? "Local delivery preparation failed safely.");
+                        delivery.ReleaseClaim();
+                        return true;
+                    }
                 }
                 var pushed = await push.PushAsync(delivery, ct);
-                if (!pushed.Succeeded) { delivery.Block(pushed.Code ?? "delivery_push_failed", pushed.Error ?? "Task branch could not be pushed safely."); delivery.ReleaseClaim(); return true; }
+                if (!pushed.Succeeded)
+                {
+                    delivery.Block(pushed.Code ?? "delivery_push_failed", pushed.Error ?? "Task branch could not be pushed safely.");
+                    delivery.ReleaseClaim();
+                    return true;
+                }
                 var opened = await pullRequests.OpenAsync(delivery, handoff.Value!, ct);
-                if (!opened.Succeeded) delivery.Block(opened.Code ?? "github_mcp_failed", opened.Error ?? "Pull request could not be opened safely.");
-                else { var pr = opened.Value!; delivery.RecordPullRequestOpen(pr.Provider, pr.Repository, pr.Number, pr.SafeUrl, pr.HeadBranch, pr.BaseBranch, pr.ObservedHeadSha, pr.CreatedAtUtc); delivery.AwaitMerge(); }
+                if (!opened.Succeeded)
+                    delivery.Block(opened.Code ?? "github_mcp_failed", opened.Error ?? "Pull request could not be opened safely.");
+                else
+                {
+                    var pr = opened.Value!;
+                    delivery.RecordPullRequestOpen(pr.Provider, pr.Repository, pr.Number, pr.SafeUrl, pr.HeadBranch, pr.BaseBranch, pr.ObservedHeadSha, pr.CreatedAtUtc);
+                    delivery.AwaitMerge();
+                }
                 delivery.ReleaseClaim();
             }
         }
@@ -42,9 +63,10 @@ internal sealed class TaskDeliveryOrchestrator(ITaskDeliveryRepository deliverie
     private async Task MaterializeEligibleDeliveriesAsync(CancellationToken ct)
     {
         foreach (var project in await projects.ListAsync(null, null, ct))
-        foreach (var run in await runs.ListAsync(project.Id, PipelineRunStatus.ReadyForDelivery, null, null, ct))
-        foreach (var item in await coordinator.GetEligibilityAsync(project.Id, run.Id, ct))
-            if (item.Eligible) await coordinator.GetOrCreateAsync(project.Id, run.Id, item.PlannedTaskId, ct);
+            foreach (var run in await runs.ListAsync(project.Id, PipelineRunStatus.ReadyForDelivery, null, null, ct))
+                foreach (var item in await coordinator.GetEligibilityAsync(project.Id, run.Id, ct))
+                    if (item.Eligible)
+                        await coordinator.GetOrCreateAsync(project.Id, run.Id, item.PlannedTaskId, ct);
     }
     private static string SafeCode(Exception ex)
     {
