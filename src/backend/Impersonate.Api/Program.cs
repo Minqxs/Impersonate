@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Impersonate.Application;
 using Impersonate.Application.Ai;
+using Impersonate.Application.Delivery;
 using Impersonate.Application.Execution;
 using Impersonate.Application.Pipelines;
 using Impersonate.Application.Planning;
@@ -163,6 +164,7 @@ runs.MapGet("/{pipelineRunId:guid}/execution/readiness", async (Guid projectId, 
 runs.MapGet("/{pipelineRunId:guid}/intelligence", async (Guid projectId, Guid pipelineRunId, IPipelineRunService service, CancellationToken ct) => ToResult(await service.IntelligenceAsync(projectId, pipelineRunId, ct), Results.Ok));
 runs.MapPost("/{pipelineRunId:guid}/execution/start", async (Guid projectId, Guid pipelineRunId, IPipelineRunService service, CancellationToken ct) => ToResult(await service.StartExecutionAsync(projectId, pipelineRunId, ct), r => Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}", r)));
 runs.MapPost("/{pipelineRunId:guid}/execution/retry", async (Guid projectId, Guid pipelineRunId, IPipelineRunService service, CancellationToken ct) => ToResult(await service.RetryExecutionAsync(projectId, pipelineRunId, ct), r => Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}", r)));
+runs.MapPost("/{pipelineRunId:guid}/deliveries/{deliveryId:guid}/retry", async (Guid projectId, Guid pipelineRunId, Guid deliveryId, ITaskDeliveryRecoveryService service, CancellationToken ct) => ToDeliveryResult(await service.RetryAsync(projectId, pipelineRunId, deliveryId, ct), r => Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}", r)));
 runs.MapPost("/{pipelineRunId:guid}/tasks/{taskId:guid}/execution/start", async (Guid projectId, Guid pipelineRunId, Guid taskId, ITaskControlService service, CancellationToken ct) => ToResult(await service.ExecuteAsync(projectId, pipelineRunId, taskId, ct), value => Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}", value)));
 runs.MapPost("/{pipelineRunId:guid}/tasks/{taskId:guid}/execution/retry", async (Guid projectId, Guid pipelineRunId, Guid taskId, ITaskControlService service, CancellationToken ct) => ToResult(await service.ExecuteAsync(projectId, pipelineRunId, taskId, ct), value => Results.Accepted($"/api/projects/{projectId}/pipeline-runs/{pipelineRunId}", value)));
 runs.MapPut("/{pipelineRunId:guid}/tasks/{taskId:guid}/model-overrides", async (Guid projectId, Guid pipelineRunId, Guid taskId, TaskModelOverridesRequest request, IPipelineRunService service, CancellationToken ct) => ToResult(await service.SetTaskModelOverridesAsync(projectId, pipelineRunId, taskId, request, ct), Results.Ok));
@@ -191,5 +193,11 @@ static IResult ToResult<T>(PipelineOperationResult<T> result, Func<T, IResult> s
     "not_found" => Results.NotFound(new ApiError(result.Code, result.Error!)),
     "invalid_transition" or "project_off" or "conflict" or "execution_not_ready" => Results.Conflict(new ApiError(result.Code, result.Error!)),
     _ => Results.BadRequest(new ApiError(result.Code ?? "validation", result.Error!))
+};
+static IResult ToDeliveryResult<T>(DeliveryOperationResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : result.Code switch
+{
+    "delivery_not_found" => Results.NotFound(new ApiError(result.Code, result.Error!)),
+    "delivery_retry_state_invalid" or "delivery_retry_claim_active" or "delivery_retry_handoff_changed" or "delivery_retry_checkpoint_invalid" or "delivery_retry_conflict" => Results.Conflict(new ApiError(result.Code, result.Error!)),
+    _ => Results.BadRequest(new ApiError(result.Code ?? "delivery_retry_failed", result.Error!))
 };
 public partial class Program;

@@ -49,7 +49,7 @@ internal sealed class TaskDeliveryCoordinator(IPipelineRunRepository runs, ITask
             return Fail("model_selection_evidence_missing", "Coder and Reviewer model-selection evidence are required.");
         var handoff = new ApprovedTaskHandoff(projectId, runId, task.Id, task.Sequence, task.Title, task.Description, task.AcceptanceCriteria,
             DeserializeGuids(task.DependsOnTaskIdsJson), attempt.SourceBaseCommitSha, attempt.PatchArtifactReference, attempt.PatchSha256,
-            DeserializeStrings(attempt.ChangedFilesJson), DeserializeStrings(attempt.ValidationSummaryJson), review.Id, review.Provider, review.Model,
+            RepositoryPathCanonicalizer.Set(DeserializeStrings(attempt.ChangedFilesJson)), DeserializeStrings(attempt.ValidationSummaryJson), review.Id, review.Provider, review.Model,
             review.Summary, attempt.Provider, attempt.Model, Evidence(coder), Evidence(reviewer), attempt.Id, attempt.AttemptNumber, task.RevisionCount);
         return DeliveryOperationResult<ApprovedTaskHandoff>.Ok(handoff);
     }

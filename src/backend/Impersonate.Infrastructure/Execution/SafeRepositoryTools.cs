@@ -101,7 +101,7 @@ internal sealed class SafeRepositoryTools(RepositoryWorkspaceService workspaces,
         var intent = await processes.RunAsync("git", Git(["add", "--intent-to-add", "--", "."]), root, 120, limit, null, ct);
         if (!intent.Succeeded)
             return Fail("incremental_patch_generation_failed", "The current task file set could not be prepared for diffing.");
-        var result = await processes.RunAsync("git", Git(["diff", "--no-ext-diff", "--find-renames", "--"]), root, 120, limit, null, ct);
+        var result = await processes.RunAsync("git", Git(["-c", "color.ui=false", "-c", "diff.noprefix=false", "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--find-renames", "--"]), root, 120, limit, null, ct);
         if (result.Output.Contains("GIT binary patch", StringComparison.Ordinal) || result.Output.Contains("Binary files ", StringComparison.Ordinal))
             return Fail("incremental_patch_generation_failed", "Binary patches are not supported.");
         return result.Succeeded ? Ok(Bound(result.Output, out var truncated), truncated) : Fail("incremental_patch_generation_failed", "The incremental task patch could not be generated.");
