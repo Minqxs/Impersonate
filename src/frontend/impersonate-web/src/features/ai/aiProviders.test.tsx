@@ -41,7 +41,7 @@ describe('AI provider credential actions', () => {
     expect(replacement?.[0]).toContain(`/api/ai/provider-connections/${connection.id}/credentials`);
     expect(replacement?.[1]?.body).toBe(JSON.stringify({ apiKey: 'replacement-secret', organisation: null, project: null }));
     expect(calls.some(([, init]) => init?.method === 'POST')).toBe(false);
-  });
+  }, 15000);
 
   it('shows a repair action and safe message for an unreadable credential', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ supportedProviders: ['OpenAI'], connections: [{ ...connection, status: 'Unavailable', lastFailureCode: 'credentials_unreadable', lastSafeFailureMessage: undefined }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));

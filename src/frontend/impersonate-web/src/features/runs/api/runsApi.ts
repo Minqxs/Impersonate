@@ -31,6 +31,7 @@ export const getPipelineIntelligence=(projectId:string,id:string)=>request<Pipel
 export const startExecution=(projectId:string,id:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}/execution/start`,{method:'POST'});
 export const retryExecution=(projectId:string,id:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}/execution/retry`,{method:'POST'});
 export const retryDelivery=(projectId:string,id:string,deliveryId:string)=>request<TaskDelivery>(`/api/projects/${projectId}/pipeline-runs/${id}/deliveries/${deliveryId}/retry`,{method:'POST'});
+export const mergeRunToMain=(projectId:string,id:string)=>request<{repository:string;pullRequestNumber:number;pullRequestHeadSha:string;mergeCommitSha:string}>(`/api/projects/${projectId}/pipeline-runs/${id}/delivery/merge-to-main`,{method:'POST'});
 export const runTask=(projectId:string,id:string,taskId:string)=>request<boolean>(`/api/projects/${projectId}/pipeline-runs/${id}/tasks/${taskId}/execution/start`,{method:'POST'});
 export const retryTask=(projectId:string,id:string,taskId:string)=>request<boolean>(`/api/projects/${projectId}/pipeline-runs/${id}/tasks/${taskId}/execution/retry`,{method:'POST'});
 export const setTaskModelOverrides=(projectId:string,id:string,taskId:string,coderModelId?:string,reviewerModelId?:string)=>request<PipelineRun>(`/api/projects/${projectId}/pipeline-runs/${id}/tasks/${taskId}/model-overrides`,{method:'PUT',body:JSON.stringify({coderModelId:coderModelId??null,reviewerModelId:reviewerModelId??null})});

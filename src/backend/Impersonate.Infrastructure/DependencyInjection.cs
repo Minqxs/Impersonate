@@ -46,7 +46,9 @@ public static class DependencyInjection
         services.AddHttpClient<RemoteOfficialGitHubMcpClient>((provider, client) => client.Timeout = TimeSpan.FromSeconds(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitHubMcpOptions>>().Value.TimeoutSeconds)).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddTransient<LocalOfficialGitHubMcpClient>();
         services.AddScoped<IGitHubMcpClient>(provider => string.Equals(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitHubMcpOptions>>().Value.Transport, "Local", StringComparison.OrdinalIgnoreCase) ? provider.GetRequiredService<LocalOfficialGitHubMcpClient>() : provider.GetRequiredService<RemoteOfficialGitHubMcpClient>());
-        services.AddScoped<IPullRequestGateway, GitHubMcpPullRequestGateway>();
+        services.AddScoped<GitHubMcpPullRequestGateway>();
+        services.AddScoped<IPullRequestGateway>(x => x.GetRequiredService<GitHubMcpPullRequestGateway>());
+        services.AddScoped<IFinalPullRequestGateway>(x => x.GetRequiredService<GitHubMcpPullRequestGateway>());
         services.AddSingleton<RepositoryWorkspaceService>();
         services.AddSingleton<IRepositoryWorkspaceService>(x => x.GetRequiredService<RepositoryWorkspaceService>());
         services.AddSingleton<IRepositoryTools, SafeRepositoryTools>();
