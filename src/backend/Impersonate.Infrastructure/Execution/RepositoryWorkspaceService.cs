@@ -109,7 +109,11 @@ internal sealed class RepositoryWorkspaceService : IRepositoryWorkspaceService
         ct.ThrowIfCancellationRequested();
         var path = FromReference(workspace);
         if (Directory.Exists(path))
+        {
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                File.SetAttributes(file, FileAttributes.Normal);
             Directory.Delete(path, true);
+        }
         return Task.CompletedTask;
     }
 

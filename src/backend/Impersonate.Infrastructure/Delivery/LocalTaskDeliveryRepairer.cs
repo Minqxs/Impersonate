@@ -7,11 +7,12 @@ using Impersonate.Application.Projects;
 using Impersonate.Domain.Ai;
 using Impersonate.Domain.Delivery;
 using Impersonate.Infrastructure.Execution;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Impersonate.Infrastructure.Delivery;
 
-internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveries, ITaskDeliveryReviewRepository reviews, IRunDeliveryRepository runDeliveries, IPipelineRunRepository runs, IProjectRepository projects, IRepositoryWorkspaceService workspaces, RepositoryWorkspaceService concreteWorkspaces, IModelRouter router, ICoderAgent coder, IDeliveryValidationService validation, DeliveryWorkspaceRegistry deliveryWorkspaces, SafeProcess process, IOptions<ExecutionOptions> configured) : ITaskDeliveryRepairer
+internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveries, ITaskDeliveryReviewRepository reviews, IRunDeliveryRepository runDeliveries, IPipelineRunRepository runs, IProjectRepository projects, IRepositoryWorkspaceService workspaces, RepositoryWorkspaceService concreteWorkspaces, IModelRouter router, ICoderAgent coder, IDeliveryValidationService validation, DeliveryWorkspaceRegistry deliveryWorkspaces, SafeProcess process, IOptions<ExecutionOptions> configured, ILogger<LocalTaskDeliveryRepairer> logger) : ITaskDeliveryRepairer
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -92,9 +93,10 @@ internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveri
         {
             if (validationReference is not null)
                 deliveryWorkspaces.Remove(validationReference);
-            if (workspace is not null)
-                await workspaces.CleanupAsync(workspace, CancellationToken.None);
             await deliveries.SaveChangesAsync(CancellationToken.None);
+            if (workspace is not null)
+                try { await workspaces.CleanupAsync(workspace, CancellationToken.None); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { logger.LogWarning("Delivery repair workspace cleanup was deferred."); }
         }
     }
 
