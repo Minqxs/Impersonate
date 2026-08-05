@@ -6,7 +6,12 @@ internal static class McpJson
 {
     public static JsonElement Result(string payload, long id)
     {
-        var json = payload.TrimStart().StartsWith("data:", StringComparison.Ordinal) ? string.Join("", payload.Split('\n').Where(x => x.StartsWith("data:", StringComparison.Ordinal)).Select(x => x[5..].Trim())) : payload;
+        var data = payload.Split('\n')
+            .Select(x => x.TrimEnd('\r'))
+            .Where(x => x.StartsWith("data:", StringComparison.Ordinal))
+            .Select(x => x[5..].TrimStart())
+            .ToArray();
+        var json = data.Length > 0 ? string.Join("\n", data) : payload;
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         if (root.TryGetProperty("error", out _))

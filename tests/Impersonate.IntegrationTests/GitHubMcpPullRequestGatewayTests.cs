@@ -91,6 +91,16 @@ public sealed class GitHubMcpPullRequestGatewayTests
     }
 
     [Fact]
+    public void Remote_protocol_parses_standard_event_stream_frames()
+    {
+        const string payload = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"[]\"}]}}\n\n";
+
+        var result = McpJson.Result(payload, 2);
+
+        Assert.Equal(JsonValueKind.Array, result.ValueKind);
+    }
+
+    [Fact]
     public async Task Malformed_list_response_fails_without_creating_a_pr()
     {
         var fixture = new Fixture();
