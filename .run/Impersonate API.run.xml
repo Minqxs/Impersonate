@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Impersonate API" type="DotNetProject" factoryName=".NET Project">
+    <option name="PROJECT_PATH" value="$PROJECT_DIR$/src/backend/Impersonate.Api/Impersonate.Api.csproj" />
+    <option name="PROJECT_TFM" value="net10.0" />
+    <option name="CONFIGURATION" value="Debug" />
+    <option name="PASS_PARENT_ENVS" value="1" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/backend/Impersonate.Api" />
+    <envs><env name="ASPNETCORE_ENVIRONMENT" value="Development" /><env name="DOTNET_ENVIRONMENT" value="Development" /><env name="ASPNETCORE_URLS" value="http://localhost:5001" /></envs>
+    <method v="2" />
+  </configuration>
+</component>

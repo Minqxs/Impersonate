@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Impersonate Worker" type="DotNetProject" factoryName=".NET Project">
+    <option name="PROJECT_PATH" value="$PROJECT_DIR$/src/backend/Impersonate.Worker/Impersonate.Worker.csproj" />
+    <option name="PROJECT_TFM" value="net10.0" />
+    <option name="CONFIGURATION" value="Debug" />
+    <option name="PASS_PARENT_ENVS" value="1" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/backend/Impersonate.Worker" />
+    <envs><env name="DOTNET_ENVIRONMENT" value="Development" /></envs>
+    <method v="2" />
+  </configuration>
+</component>
