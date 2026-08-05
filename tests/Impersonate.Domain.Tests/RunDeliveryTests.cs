@@ -38,5 +38,14 @@ public sealed class RunDeliveryTests
         Assert.Throws<InvalidOperationException>(() => delivery.ApproveFinalReview(Guid.NewGuid(), "old-head"));
     }
 
+    [Fact]
+    public void Final_review_attempt_is_bound_to_exact_head_and_superseded_after_repair()
+    {
+        var review = RunDeliveryReview.Create(Guid.NewGuid(), 1, "Fake", "reviewer", "head", DeliveryReviewDecision.ChangesRequested, "repair", "[]", "fix issue");
+        Assert.True(review.IsCurrent);
+        review.Supersede();
+        Assert.False(review.IsCurrent);
+    }
+
     private static RunDelivery Create() => RunDelivery.Create(Guid.NewGuid(), Guid.NewGuid(), "main", "base", "impersonate/run-example");
 }

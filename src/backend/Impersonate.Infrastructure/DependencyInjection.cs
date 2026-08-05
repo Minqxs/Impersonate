@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ITargetRepositoryDeliveryService, LocalTargetRepositoryDeliveryService>();
         services.AddScoped<ITaskDeliveryPushService, TaskDeliveryPushService>();
         services.AddScoped<ITaskDeliveryRepairer, LocalTaskDeliveryRepairer>();
+        services.AddScoped<IFinalRunReviewer, LocalFinalRunReviewer>();
         services.AddScoped<IRunIntegrationService, LocalRunIntegrationService>();
         services.AddOptions<GitHubMcpOptions>().Configure(x => x.Tools = []).BindConfiguration("Delivery:GitHubMcp").Validate(x => !x.Enabled || (x.TimeoutSeconds is >= 1 and <= 300 && (x.Transport == "Remote" || x.Transport == "Local") && x.Tools.Length == 4 && x.Tools.Contains("list_pull_requests") && x.Tools.Contains("pull_request_read") && x.Tools.Contains("create_pull_request") && x.Tools.Contains("merge_pull_request")), "GitHub MCP delivery configuration is invalid.").ValidateOnStart();
         services.AddHttpClient<RemoteOfficialGitHubMcpClient>((provider, client) => client.Timeout = TimeSpan.FromSeconds(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitHubMcpOptions>>().Value.TimeoutSeconds)).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -60,6 +61,7 @@ public static class DependencyInjection
             services.AddScoped<ITaskDeliveryRepository, EfTaskDeliveryRepository>();
             services.AddScoped<IRunDeliveryRepository, EfRunDeliveryRepository>();
             services.AddScoped<ITaskDeliveryReviewRepository, EfTaskDeliveryReviewRepository>();
+            services.AddScoped<IRunDeliveryReviewRepository, EfRunDeliveryReviewRepository>();
             services.AddScoped<IExecutionInvocationStore, EfExecutionInvocationStore>();
             services.AddScoped<IAiRoutingRepository, EfAiRoutingRepository>();
             services.AddScoped<IProviderCredentialStore, DataProtectionCredentialStore>();

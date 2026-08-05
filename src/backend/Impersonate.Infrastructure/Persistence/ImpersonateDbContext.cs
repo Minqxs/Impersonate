@@ -19,6 +19,7 @@ public sealed class ImpersonateDbContext(DbContextOptions<ImpersonateDbContext> 
     public DbSet<TaskDelivery> TaskDeliveries => Set<TaskDelivery>();
     public DbSet<RunDelivery> RunDeliveries => Set<RunDelivery>();
     public DbSet<TaskDeliveryReview> TaskDeliveryReviews => Set<TaskDeliveryReview>();
+    public DbSet<RunDeliveryReview> RunDeliveryReviews => Set<RunDeliveryReview>();
     public DbSet<AiProviderConnection> AiProviderConnections => Set<AiProviderConnection>();
     public DbSet<DiscoveredModel> DiscoveredModels => Set<DiscoveredModel>();
     public DbSet<ProjectAiRoutingPolicy> ProjectAiRoutingPolicies => Set<ProjectAiRoutingPolicy>();
