@@ -84,7 +84,7 @@ public sealed class GitHubMcpPullRequestGatewayTests
         }, default);
         Assert.Equal(JsonValueKind.Array, result.ValueKind);
         Assert.Equal(["initialize", "notifications/initialized", "tools/call"], handler.Methods);
-        Assert.All(handler.ToolsHeaders, value => Assert.Equal("list_pull_requests,pull_request_read,create_pull_request,merge_pull_request", value));
+        Assert.All(handler.ToolsHeaders, value => Assert.Equal("list_pull_requests,pull_request_read,create_pull_request,update_pull_request,merge_pull_request", value));
         Assert.All(handler.ReadOnlyHeaders, value => Assert.Equal("false", value));
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.CallToolAsync("delete_branch", new { }, default));
         Assert.Equal(3, handler.Methods.Count);
@@ -98,6 +98,31 @@ public sealed class GitHubMcpPullRequestGatewayTests
         var result = McpJson.Result(payload, 2);
 
         Assert.Equal(JsonValueKind.Array, result.ValueKind);
+    }
+
+    [Fact]
+    public void Remote_protocol_preserves_non_json_tool_text()
+    {
+        const string payload = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"raw diff text\"}]}}\n\n";
+
+        var result = McpJson.Result(payload, 2);
+
+        Assert.Equal("raw diff text", result.GetString());
+    }
+
+    [Fact]
+    public async Task Prose_create_response_recovers_the_created_pr_by_identity()
+    {
+        var fixture = new Fixture();
+        fixture.Mcp.Results.Enqueue(Json(Array.Empty<object>()));
+        fixture.Mcp.Results.Enqueue(Json("pull request created successfully"));
+        fixture.Mcp.Results.Enqueue(Json(new[] { PrObject(18, fixture.Delivery.CommitSha!) }));
+
+        var result = await fixture.Gateway.OpenAsync(fixture.Delivery, fixture.Handoff, default);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(18, result.Value!.Number);
+        Assert.Equal(["list_pull_requests", "create_pull_request", "list_pull_requests"], fixture.Mcp.Calls);
     }
 
     [Fact]

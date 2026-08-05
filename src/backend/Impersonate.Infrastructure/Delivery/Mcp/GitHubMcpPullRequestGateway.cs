@@ -35,10 +35,9 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             var existing = await FindAsync(parts[0], parts[1], baseBranch, delivery.RemoteBranchName, ct);
             if (existing is not null)
                 return Match(existing, delivery, repository, baseBranch);
-            JsonElement created;
             try
             {
-                created = await mcp.CallToolAsync("create_pull_request", new
+                var created = await mcp.CallToolAsync("create_pull_request", new
                 {
                     owner = parts[0],
                     repo = parts[1],
@@ -49,6 +48,15 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
                     draft = options.DraftPullRequests,
                     maintainer_can_modify = true
                 }, ct);
+                var number = Long(created, "number") ?? Long(created, "pull_number") ?? throw new InvalidOperationException("github_mcp_malformed_response");
+                var exact = await mcp.CallToolAsync("pull_request_read", new
+                {
+                    method = "get",
+                    owner = parts[0],
+                    repo = parts[1],
+                    pullNumber = number
+                }, ct);
+                return Match(Parse(exact), delivery, repository, baseBranch);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch
@@ -56,15 +64,6 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
                 existing = await FindAsync(parts[0], parts[1], baseBranch, delivery.RemoteBranchName, ct);
                 return existing is null ? Fail("github_mcp_create_failed", "GitHub MCP pull-request creation failed safely.") : Match(existing, delivery, repository, baseBranch);
             }
-            var number = Long(created, "number") ?? Long(created, "pull_number") ?? throw new InvalidOperationException("github_mcp_malformed_response");
-            var exact = await mcp.CallToolAsync("pull_request_read", new
-            {
-                method = "get",
-                owner = parts[0],
-                repo = parts[1],
-                pullNumber = number
-            }, ct);
-            return Match(Parse(exact), delivery, repository, baseBranch);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -155,6 +154,35 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP integration.");
         try
         {
+            var pull = Parse(await mcp.CallToolAsync("pull_request_read", new
+            {
+                method = "get",
+                owner = parts[0],
+                repo = parts[1],
+                pullNumber = delivery.PullRequestNumber.Value
+            }, ct));
+            if (!string.Equals(pull.HeadSha, delivery.CommitSha, StringComparison.OrdinalIgnoreCase) || !string.Equals(pull.BaseBranch, delivery.PullRequestBaseBranch, StringComparison.Ordinal) || pull.Merged || !string.Equals(pull.State, "open", StringComparison.OrdinalIgnoreCase))
+                return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_pull_request_identity_changed", "Pull-request identity is no longer safe to merge.");
+            if (pull.HasConflicts)
+                return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_pull_request_conflict", "Task pull request has merge conflicts.");
+            if (pull.Draft)
+                await mcp.CallToolAsync("update_pull_request", new
+                {
+                    owner = parts[0],
+                    repo = parts[1],
+                    pullNumber = delivery.PullRequestNumber.Value,
+                    draft = false
+                }, ct);
+            var checks = await mcp.CallToolAsync("pull_request_read", new
+            {
+                method = "get_check_runs",
+                owner = parts[0],
+                repo = parts[1],
+                pullNumber = delivery.PullRequestNumber.Value
+            }, ct);
+            var checksState = CheckRunsState(checks);
+            if (checksState != "passed")
+                return DeliveryOperationResult<PullRequestObservation>.Fail(checksState == "failed" ? "delivery_required_checks_failed" : "delivery_required_checks_pending", checksState == "failed" ? "Task pull-request checks failed." : "Task pull-request checks are still pending.");
             await mcp.CallToolAsync("merge_pull_request", new
             {
                 owner = parts[0],
@@ -327,7 +355,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         var mergeableState = Text(value, "mergeable_state") ?? Text(value, "mergeableState");
         var conflicts = mergeable.ValueKind == JsonValueKind.False || string.Equals(mergeableState, "dirty", StringComparison.OrdinalIgnoreCase);
         var readiness = conflicts ? "conflicting" : mergeable.ValueKind == JsonValueKind.True || string.Equals(mergeableState, "clean", StringComparison.OrdinalIgnoreCase) ? "mergeable" : "pending";
-        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", Text(@base, "sha") ?? Text(value, "base_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"), conflicts, readiness);
+        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, value.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", Text(@base, "sha") ?? Text(value, "base_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"), conflicts, readiness);
     }
     private static string? Text(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
     private static long? Long(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : null;
@@ -360,5 +388,15 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             _ => "pending"
         };
     }
-    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, string BaseSha, DateTimeOffset CreatedAt, string? MergeCommitSha, bool HasConflicts, string MergeableState);
+    private static string CheckRunsState(JsonElement value)
+    {
+        var runs = value.ValueKind == JsonValueKind.Array ? value : value.ValueKind == JsonValueKind.Object && value.TryGetProperty("check_runs", out var nested) ? nested : default;
+        if (runs.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("github_mcp_malformed_response");
+        var states = runs.EnumerateArray().Select(x => (Status: Text(x, "status"), Conclusion: Text(x, "conclusion"))).ToArray();
+        if (states.Any(x => x.Conclusion is "failure" or "cancelled" or "timed_out" or "action_required" or "startup_failure"))
+            return "failed";
+        return states.Any(x => !string.Equals(x.Status, "completed", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(x.Conclusion)) ? "pending" : "passed";
+    }
+    private sealed record PullRequest(long Number, string Url, string State, bool Merged, bool Draft, string HeadBranch, string BaseBranch, string HeadSha, string BaseSha, DateTimeOffset CreatedAt, string? MergeCommitSha, bool HasConflicts, string MergeableState);
 }

@@ -101,7 +101,7 @@ internal sealed class RemoteOfficialGitHubMcpClient(HttpClient http, IOptions<Gi
     }
     private void EnsureAllowed(string tool)
     {
-        if (!options.Enabled || !options.Tools.Contains(tool, StringComparer.Ordinal) || options.Tools.Except(["list_pull_requests", "pull_request_read", "create_pull_request", "merge_pull_request"], StringComparer.Ordinal).Any())
+        if (!options.Enabled || !options.Tools.Contains(tool, StringComparer.Ordinal) || options.Tools.Except(["list_pull_requests", "pull_request_read", "create_pull_request", "update_pull_request", "merge_pull_request"], StringComparer.Ordinal).Any())
             throw new InvalidOperationException("github_mcp_tool_not_allowed");
         if (!Uri.TryCreate(options.RemoteUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !string.Equals(uri.Host, "api.githubcopilot.com", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("github_mcp_server_not_allowed");
