@@ -68,6 +68,8 @@ internal sealed class EfRunDeliveryRepository(ImpersonateDbContext db, ILogger<E
         {
             await using var command = connection.CreateCommand();
             command.CommandText = $"""
+                SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
                 ;WITH candidate AS
                 (
                     SELECT TOP (1) *
