@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace Impersonate.Infrastructure.Delivery;
 
-internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveries, ITaskDeliveryReviewRepository reviews, IPipelineRunRepository runs, IProjectRepository projects, IRepositoryWorkspaceService workspaces, RepositoryWorkspaceService concreteWorkspaces, IModelRouter router, ICoderAgent coder, IDeliveryValidationService validation, DeliveryWorkspaceRegistry deliveryWorkspaces, SafeProcess process, IOptions<ExecutionOptions> configured) : ITaskDeliveryRepairer
+internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveries, ITaskDeliveryReviewRepository reviews, IRunDeliveryRepository runDeliveries, IPipelineRunRepository runs, IProjectRepository projects, IRepositoryWorkspaceService workspaces, RepositoryWorkspaceService concreteWorkspaces, IModelRouter router, ICoderAgent coder, IDeliveryValidationService validation, DeliveryWorkspaceRegistry deliveryWorkspaces, SafeProcess process, IOptions<ExecutionOptions> configured) : ITaskDeliveryRepairer
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -26,7 +26,7 @@ internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveri
             var run = await runs.GetAsync(delivery.ProjectId, delivery.PipelineRunId, ct);
             var task = run?.Tasks.SingleOrDefault(x => x.Id == delivery.PlannedTaskId);
             var project = await projects.GetAsync(delivery.ProjectId, ct);
-            var review = (await reviews.ListAsync(delivery.Id, ct)).SingleOrDefault(x => x.IsCurrent && x.Decision == DeliveryReviewDecision.ChangesRequested);
+            var review = (await reviews.ListAsync(delivery.Id, ct)).SingleOrDefault(x => x.IsCurrent);
             if (run is null || task is null || project is null || review is null || string.IsNullOrWhiteSpace(delivery.RemoteBranchName) || string.IsNullOrWhiteSpace(delivery.CommitSha))
             {
                 delivery.Block("delivery_repair_context_missing", "Task delivery repair context is unavailable.", now);
@@ -44,7 +44,15 @@ internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveri
                 delivery.Block("delivery_repair_head_conflict", "The task branch advanced before repair could begin.", now);
                 return true;
             }
-            var feedback = review.Feedback ?? review.Summary;
+            var path = concreteWorkspaces.FromReference(workspace);
+            var resolvingConflict = delivery.Status == TaskDeliveryStatus.ConflictResolution;
+            if (resolvingConflict)
+            {
+                var aggregate = await runDeliveries.GetByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct) ?? throw new InvalidOperationException("run_delivery_not_found");
+                await Git(path, ["fetch", "--no-tags", "origin", $"+refs/heads/{aggregate.RunBranchName}:refs/remotes/origin/{aggregate.RunBranchName}"], ct);
+                await Git(path, ["merge", "--no-commit", "--no-ff", $"refs/remotes/origin/{aggregate.RunBranchName}"], ct, allowFailure: true);
+            }
+            var feedback = resolvingConflict ? $"Resolve all integration conflicts against the current run branch. Prior approval: {review.Summary}" : review.Feedback ?? review.Summary;
             var selection = await router.SelectAsync(new(delivery.ProjectId, delivery.PipelineRunId, AgentRole.Coder, task.Description, task.CoderModelOverrideId, TaskTitle: task.Title, AcceptanceCriteria: task.AcceptanceCriteria, FeatureRequest: run.FeatureRequest, AttemptNumber: delivery.DeliveryRepairAttemptCount, RevisionCount: delivery.DeliveryRepairAttemptCount, ReviewerFeedback: feedback), ct);
             if (!selection.Succeeded || selection.Selection is null)
             {
@@ -57,7 +65,6 @@ internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveri
                 delivery.ReleaseClaim();
                 return true;
             }
-            var path = concreteWorkspaces.FromReference(workspace);
             validationReference = deliveryWorkspaces.Register(path);
             var checkedResult = await validation.ValidateAsync(validationReference, ct);
             if (!checkedResult.Succeeded)

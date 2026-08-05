@@ -84,9 +84,9 @@ public sealed class GitHubMcpPullRequestGatewayTests
         }, default);
         Assert.Equal(JsonValueKind.Array, result.ValueKind);
         Assert.Equal(["initialize", "notifications/initialized", "tools/call"], handler.Methods);
-        Assert.All(handler.ToolsHeaders, value => Assert.Equal("list_pull_requests,pull_request_read,create_pull_request", value));
+        Assert.All(handler.ToolsHeaders, value => Assert.Equal("list_pull_requests,pull_request_read,create_pull_request,merge_pull_request", value));
         Assert.All(handler.ReadOnlyHeaders, value => Assert.Equal("false", value));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CallToolAsync("merge_pull_request", new { }, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.CallToolAsync("delete_branch", new { }, default));
         Assert.Equal(3, handler.Methods.Count);
     }
 

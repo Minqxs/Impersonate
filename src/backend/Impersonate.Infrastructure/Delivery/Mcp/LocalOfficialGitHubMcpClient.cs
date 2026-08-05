@@ -112,7 +112,7 @@ internal sealed class LocalOfficialGitHubMcpClient(IOptions<GitHubMcpOptions> co
 
     private void EnsureAllowed(string tool)
     {
-        if (!options.Enabled || !options.Tools.Contains(tool, StringComparer.Ordinal) || options.Tools.Except(["list_pull_requests", "pull_request_read", "create_pull_request"], StringComparer.Ordinal).Any())
+        if (!options.Enabled || !options.Tools.Contains(tool, StringComparer.Ordinal) || options.Tools.Except(["list_pull_requests", "pull_request_read", "create_pull_request", "merge_pull_request"], StringComparer.Ordinal).Any())
             throw new InvalidOperationException("github_mcp_tool_not_allowed");
     }
 }

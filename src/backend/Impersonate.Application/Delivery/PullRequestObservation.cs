@@ -8,4 +8,5 @@ public sealed record PullRequestObservation(
     string BaseBranch,
     string HeadSha,
     PullRequestExternalState State,
-    string? MergeCommitSha);
+    string? MergeCommitSha,
+    bool HasConflicts = false);

@@ -8,4 +8,6 @@ public interface IPullRequestGateway
     Task<DeliveryOperationResult<PullRequestObservation>> ReadAsync(TaskDelivery delivery, CancellationToken cancellationToken);
     Task<DeliveryOperationResult<PullRequestReviewContext>> ReadReviewContextAsync(TaskDelivery delivery, CancellationToken cancellationToken) =>
         Task.FromResult(DeliveryOperationResult<PullRequestReviewContext>.Fail("delivery_review_not_supported", "Pull-request review context is unavailable."));
+    Task<DeliveryOperationResult<PullRequestObservation>> MergeAsync(TaskDelivery delivery, CancellationToken cancellationToken) =>
+        Task.FromResult(DeliveryOperationResult<PullRequestObservation>.Fail("delivery_merge_not_supported", "Pull-request merge is unavailable."));
 }
