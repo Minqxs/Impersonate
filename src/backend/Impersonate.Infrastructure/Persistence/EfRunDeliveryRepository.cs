@@ -26,5 +26,23 @@ internal sealed class EfRunDeliveryRepository(ImpersonateDbContext db) : IRunDel
         }
         catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
     }
+    public async Task<RunDelivery?> ClaimNextFinalPullRequestAsync(Guid claimId, string owner, DateTimeOffset at, DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var delivery = await db.RunDeliveries.Where(x => (x.Status == RunDeliveryStatus.ReadyForFinalPullRequest || x.Status == RunDeliveryStatus.FinalPullRequestOpen) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= at)).OrderBy(x => x.UpdatedAtUtc).FirstOrDefaultAsync(ct);
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
+        delivery.Claim(claimId, owner, expiresAt, at);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
+        catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
+    }
     public Task SaveChangesAsync(CancellationToken ct) => db.SaveChangesAsync(ct);
 }
