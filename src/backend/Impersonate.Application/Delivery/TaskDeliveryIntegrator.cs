@@ -37,10 +37,14 @@ internal sealed class TaskDeliveryIntegrator(ITaskDeliveryRepository deliveries,
                 delivery.ReleaseClaim();
                 return true;
             }
+            if (string.IsNullOrWhiteSpace(observation.MergeCommitSha))
+            {
+                delivery.ReleaseClaim();
+                return true;
+            }
             delivery.MarkMergedIntoRun(now);
             var aggregate = await runDeliveries.GetByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct) ?? throw new InvalidOperationException("Run delivery was not found.");
-            if (!string.IsNullOrWhiteSpace(observation.MergeCommitSha))
-                aggregate.RecordIntegratedHead(observation.MergeCommitSha);
+            aggregate.RecordIntegratedHead(observation.MergeCommitSha);
             delivery.ReleaseClaim();
             await runDeliveries.SaveChangesAsync(ct);
             return true;
