@@ -95,7 +95,10 @@ internal sealed class LocalTaskDeliveryRepairer(ITaskDeliveryRepository deliveri
                 deliveryWorkspaces.Remove(validationReference);
             await deliveries.SaveChangesAsync(CancellationToken.None);
             if (workspace is not null)
-                try { await workspaces.CleanupAsync(workspace, CancellationToken.None); }
+                try
+                {
+                    await workspaces.CleanupAsync(workspace, CancellationToken.None);
+                }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { logger.LogWarning("Delivery repair workspace cleanup was deferred."); }
         }
     }

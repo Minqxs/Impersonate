@@ -16,6 +16,7 @@ public sealed class RunDeliveryPersistenceTests
         Assert.Equal("RunDeliveries", entity.GetTableName());
         Assert.Contains(entity.GetIndexes(), x => x.IsUnique && x.Properties.Select(p => p.Name).SequenceEqual([nameof(RunDelivery.PipelineRunId)]));
         Assert.Contains(entity.GetIndexes(), x => x.IsUnique && x.Properties.Select(p => p.Name).SequenceEqual([nameof(RunDelivery.ProjectId), nameof(RunDelivery.RunBranchName)]));
+        Assert.Contains(entity.GetIndexes(), x => x.Properties.Select(p => p.Name).SequenceEqual([nameof(RunDelivery.Status), nameof(RunDelivery.ClaimExpiresAtUtc), nameof(RunDelivery.UpdatedAtUtc), nameof(RunDelivery.Id)]));
         Assert.DoesNotContain(entity.GetProperties(), x => x.Name.Contains("Patch", StringComparison.OrdinalIgnoreCase) || x.Name.Contains("Credential", StringComparison.OrdinalIgnoreCase));
     }
 }

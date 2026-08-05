@@ -160,7 +160,10 @@ internal sealed class LocalFinalRunReviewer(IRunDeliveryRepository runDeliveries
             await reviews.SaveChangesAsync(CancellationToken.None);
             await runDeliveries.SaveChangesAsync(CancellationToken.None);
             if (workspace is not null)
-                try { await workspaces.CleanupAsync(workspace, CancellationToken.None); }
+                try
+                {
+                    await workspaces.CleanupAsync(workspace, CancellationToken.None);
+                }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { logger.LogWarning("Final review workspace cleanup was deferred."); }
         }
     }

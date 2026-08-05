@@ -33,7 +33,7 @@ internal sealed class RunDeliveryConfiguration : IEntityTypeConfiguration<RunDel
         b.HasIndex(x => new { x.ProjectId, x.Status });
         b.HasIndex(x => new { x.ProjectId, x.RunBranchName }).IsUnique();
         b.HasIndex(x => new { x.FinalPullRequestRepository, x.FinalPullRequestNumber }).IsUnique().HasFilter("[FinalPullRequestNumber] IS NOT NULL");
-        b.HasIndex(x => new { x.Status, x.ClaimExpiresAtUtc, x.CreatedAtUtc });
+        b.HasIndex(x => new { x.Status, x.ClaimExpiresAtUtc, x.UpdatedAtUtc, x.Id });
         b.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
         b.HasOne<PipelineRun>().WithOne(x => x.RunDelivery).HasForeignKey<RunDelivery>(x => x.PipelineRunId).OnDelete(DeleteBehavior.Cascade);
     }
