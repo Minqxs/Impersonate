@@ -13,7 +13,7 @@ public sealed class GitHubMcpOptions
     public string LocalCommand { get; set; } = "github-mcp-server";
     public string[] LocalArguments { get; set; } = ["stdio"];
     public string[] AllowedRepositories { get; set; } = [];
-    public string[] Tools { get; set; } = ["list_pull_requests", "pull_request_read", "create_pull_request", "merge_pull_request"];
+    public string[] Tools { get; set; } = ["list_pull_requests", "pull_request_read", "create_pull_request", "update_pull_request", "merge_pull_request"];
     public int TimeoutSeconds { get; set; } = 60;
     public bool DraftPullRequests { get; set; } = true;
 }

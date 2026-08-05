@@ -31,7 +31,7 @@ internal static class McpJson
                         using var nested = JsonDocument.Parse(text.GetString()!);
                         return nested.RootElement.Clone();
                     }
-                    catch (JsonException) { }
+                    catch (JsonException) { return JsonSerializer.SerializeToElement(text.GetString()); }
                 }
         return result.Clone();
     }
