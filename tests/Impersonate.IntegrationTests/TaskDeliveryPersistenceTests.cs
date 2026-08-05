@@ -31,4 +31,14 @@ public sealed class TaskDeliveryPersistenceTests
         Assert.Contains(entity.GetIndexes(), index => index.Properties.Select(x => x.Name).SequenceEqual([nameof(TaskDeliveryReview.TaskDeliveryId), nameof(TaskDeliveryReview.ExactHeadSha)]));
         Assert.Contains(entity.GetForeignKeys(), foreignKey => foreignKey.PrincipalEntityType.ClrType == typeof(TaskDelivery) && foreignKey.DeleteBehavior == DeleteBehavior.Cascade);
     }
+
+    [Fact]
+    public void Run_delivery_reviews_persist_exact_head_attempt_identity()
+    {
+        var options = new DbContextOptionsBuilder<ImpersonateDbContext>().UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=ImpersonateModelOnly;Trusted_Connection=True").Options;
+        using var db = new ImpersonateDbContext(options);
+        var entity = db.Model.FindEntityType(typeof(RunDeliveryReview))!;
+        Assert.Contains(entity.GetIndexes(), index => index.IsUnique && index.Properties.Select(x => x.Name).SequenceEqual([nameof(RunDeliveryReview.RunDeliveryId), nameof(RunDeliveryReview.AttemptNumber)]));
+        Assert.Contains(entity.GetForeignKeys(), foreignKey => foreignKey.PrincipalEntityType.ClrType == typeof(RunDelivery) && foreignKey.DeleteBehavior == DeleteBehavior.Cascade);
+    }
 }
