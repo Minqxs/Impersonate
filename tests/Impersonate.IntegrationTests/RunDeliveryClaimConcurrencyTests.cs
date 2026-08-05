@@ -146,6 +146,8 @@ public sealed class RunDeliveryClaimConcurrencyTests
         private async Task<RunDelivery?> ClaimAsync(string owner, DateTimeOffset? value, bool review)
         {
             await using var db = Context();
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
             var repository = new EfRunDeliveryRepository(db, NullLogger<EfRunDeliveryRepository>.Instance);
             var at = value ?? DateTimeOffset.UtcNow;
             return review
