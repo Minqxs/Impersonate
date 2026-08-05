@@ -15,3 +15,8 @@ If warnings repeat:
 5. If `run_delivery_claim_transient_failure` repeats after database health recovers, restart one Worker instance. The durable delivery state and lease rules prevent duplicate GitHub or AI effects.
 
 The API does not expose database diagnostics to the frontend. Run details continue to show only safe delivery state and bounded failure information.
+# Local development startup
+
+Set `GITHUB_MCP_TOKEN` in the current PowerShell environment, then run `./scripts/local/start-impersonate.ps1 -NoBrowser`. The script validates tools and the TaskIt allowlist, stops only Impersonate processes previously recorded for this checkout, builds, migrates, starts the API and Worker, and runs the non-mutating preflight. Use `status-impersonate.ps1` for boolean-only readiness and `stop-impersonate.ps1` to stop the recorded processes. Rider and VS Code tasks delegate to these scripts.
+
+The token is never accepted as an argument or written to configuration. Development JSON contains only the official remote MCP identity, required tools, and `Minqxs/TaskIt` allowlist. Non-Development defaults remain disabled with an empty allowlist.
