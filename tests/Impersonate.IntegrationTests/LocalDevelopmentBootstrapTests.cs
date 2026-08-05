@@ -49,12 +49,36 @@ public sealed class LocalDevelopmentBootstrapTests
     {
         var start = File.ReadAllText(Repo("scripts", "local", "start-impersonate.ps1"));
         var stop = File.ReadAllText(Repo("scripts", "local", "stop-impersonate.ps1"));
+        var lifecycle = File.ReadAllText(Repo("scripts", "local", "process-lifecycle.ps1"));
         Assert.DoesNotContain("[string]$GitHub", start, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("$env:GITHUB_MCP_TOKEN", start);
         Assert.DoesNotContain("Invoke-Expression", start, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("StartsWith($repositoryRoot", stop);
-        Assert.Contains("Impersonate.Api", stop);
-        Assert.Contains("Impersonate.Worker", stop);
+        Assert.Contains("Stop-AllImpersonateLocalProcesses", stop);
+        Assert.Contains("StartTimeUtc", lifecycle);
+        Assert.Contains("ExecutablePath", lifecycle);
+        Assert.Contains("RepositoryRoot", lifecycle);
+        Assert.Contains("Launcher", lifecycle);
+        Assert.Contains("Test-ImpersonateMetadata", lifecycle);
+        Assert.Contains("CloseMainWindow", lifecycle);
+        Assert.Contains("Stop-Process -Id $process.Id -Force", lifecycle);
+        Assert.DoesNotContain("Stop-Process -Name dotnet", lifecycle, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("GITHUB_MCP_TOKEN", lifecycle);
+    }
+
+    [Fact]
+    public void Rider_compound_owns_both_dotnet_projects_without_detached_bootstrap()
+    {
+        var api = File.ReadAllText(Repo(".run", "Impersonate API.run.xml"));
+        var worker = File.ReadAllText(Repo(".run", "Impersonate Worker.run.xml"));
+        var compound = File.ReadAllText(Repo(".run", "Impersonate Local.run.xml"));
+        Assert.Contains("type=\"DotNetProject\"", api);
+        Assert.Contains("Impersonate.Api.csproj", api);
+        Assert.Contains("type=\"DotNetProject\"", worker);
+        Assert.Contains("Impersonate.Worker.csproj", worker);
+        Assert.Contains("Impersonate API", compound);
+        Assert.Contains("Impersonate Worker", compound);
+        Assert.DoesNotContain("start-impersonate.ps1", api + worker + compound, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Start-Process", api + worker + compound, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Repo(params string[] parts)

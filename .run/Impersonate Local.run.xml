@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Impersonate Local" type="CompoundRunConfigurationType">
+    <toRun name="Impersonate API" type="DotNetProject" />
+    <toRun name="Impersonate Worker" type="DotNetProject" />
+    <method v="2" />
+  </configuration>
+</component>

@@ -22,7 +22,10 @@ builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddHealthChecks();
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddPolicy("FrontendDevelopment", policy => policy.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod()));
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(15));
 var app = builder.Build();
+app.Lifetime.ApplicationStopping.Register(() => app.Logger.LogInformation("Impersonate API cancellation started."));
+app.Lifetime.ApplicationStopped.Register(() => app.Logger.LogInformation("Impersonate API shutdown completed."));
 app.Logger.LogInformation("Data Protection key ring: {DataProtectionKeyRingPath}", app.Services.GetRequiredService<Impersonate.Infrastructure.Ai.DataProtectionKeyRingLocation>().Path);
 app.Logger.LogInformation("Starting Impersonate API");
 if (app.Environment.IsDevelopment())
