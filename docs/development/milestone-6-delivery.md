@@ -1,5 +1,11 @@
 # Milestone 6: run integration delivery
 
+## RunDelivery claim deadlock incident
+
+During the live two-task acceptance run, the final-review and final-pull-request hosted workers contended on `RunDeliveries`. Both claim paths used broad `Serializable` read-then-update transactions ordered by `UpdatedAtUtc`, while the supporting index ended in `CreatedAtUtc`. A single Worker process was sufficient because both hosted services poll concurrently; additional Worker processes only increase contention. SQL Server selected one claim transaction as deadlock victim with error 1205. The host stayed alive and retried its polling cycle, and no delivery was marked blocked by the transient database failure.
+
+RunDelivery claims now use one short SQL Server `UPDATE ... OUTPUT` operation over a deterministically ordered candidate with `UPDLOCK`, `READPAST`, and `ROWLOCK`. The claim lease is committed before any GitHub or AI work begins. Active leases are skipped, expired leases are recoverable, terminal states are excluded, and the final-review and final-PR workers retain disjoint eligible status sets. A bounded claim-specific retry retries only transient SQL failures with jitter and cancellation; retry exhaustion exposes the safe code `run_delivery_claim_transient_failure`. The claim index is aligned to `Status`, `ClaimExpiresAtUtc`, `UpdatedAtUtc`, and `Id`.
+
 > The former per-task pull-request-to-main design is superseded. Historical evidence remains intact, but new delivery uses one integration branch per run, autonomous internal task pull requests, and one final user-approved pull request to the configured default branch.
 
 ## Goal
