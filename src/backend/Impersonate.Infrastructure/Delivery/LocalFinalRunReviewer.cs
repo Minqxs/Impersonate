@@ -10,11 +10,12 @@ using Impersonate.Domain.Ai;
 using Impersonate.Domain.Delivery;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Infrastructure.Execution;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Impersonate.Infrastructure.Delivery;
 
-internal sealed class LocalFinalRunReviewer(IRunDeliveryRepository runDeliveries, IRunDeliveryReviewRepository reviews, ITaskDeliveryRepository taskDeliveries, IPipelineRunRepository runs, IProjectRepository projects, IRepositoryWorkspaceService workspaces, RepositoryWorkspaceService concreteWorkspaces, IModelRouter router, IReviewerAgent reviewer, ICoderAgent coder, IDeliveryValidationService validation, DeliveryWorkspaceRegistry deliveryWorkspaces, SafeProcess process, IOptions<ExecutionOptions> configured) : IFinalRunReviewer
+internal sealed class LocalFinalRunReviewer(IRunDeliveryRepository runDeliveries, IRunDeliveryReviewRepository reviews, ITaskDeliveryRepository taskDeliveries, IPipelineRunRepository runs, IProjectRepository projects, IRepositoryWorkspaceService workspaces, RepositoryWorkspaceService concreteWorkspaces, IModelRouter router, IReviewerAgent reviewer, ICoderAgent coder, IDeliveryValidationService validation, DeliveryWorkspaceRegistry deliveryWorkspaces, SafeProcess process, IOptions<ExecutionOptions> configured, ILogger<LocalFinalRunReviewer> logger) : IFinalRunReviewer
 {
     public async Task<bool> ProcessOneAsync(string workerId, CancellationToken ct)
     {
@@ -36,7 +37,8 @@ internal sealed class LocalFinalRunReviewer(IRunDeliveryRepository runDeliveries
             var tasks = await taskDeliveries.ListByRunAsync(delivery.ProjectId, delivery.PipelineRunId, ct);
             if (delivery.Status == RunDeliveryStatus.IntegratingTasks)
             {
-                if (tasks.Count == 0 || tasks.Any(x => x.Status != TaskDeliveryStatus.MergedIntoRun))
+                var expectedTaskIds = run.Tasks.Select(x => x.Id).ToHashSet();
+                if (tasks.Count != expectedTaskIds.Count || tasks.Any(x => !expectedTaskIds.Contains(x.PlannedTaskId) || x.Status != TaskDeliveryStatus.MergedIntoRun))
                 {
                     delivery.ReleaseClaim();
                     return true;
@@ -151,7 +153,16 @@ internal sealed class LocalFinalRunReviewer(IRunDeliveryRepository runDeliveries
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { delivery.ReleaseClaim(); throw; }
         catch { delivery.Block("final_review_failed", "Final run review failed safely."); return true; }
-        finally { if (validationReference is not null) deliveryWorkspaces.Remove(validationReference); if (workspace is not null) await workspaces.CleanupAsync(workspace, CancellationToken.None); await reviews.SaveChangesAsync(CancellationToken.None); await runDeliveries.SaveChangesAsync(CancellationToken.None); }
+        finally
+        {
+            if (validationReference is not null)
+                deliveryWorkspaces.Remove(validationReference);
+            await reviews.SaveChangesAsync(CancellationToken.None);
+            await runDeliveries.SaveChangesAsync(CancellationToken.None);
+            if (workspace is not null)
+                try { await workspaces.CleanupAsync(workspace, CancellationToken.None); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { logger.LogWarning("Final review workspace cleanup was deferred."); }
+        }
     }
     private async Task<SelectedModel?> Select(RunDelivery delivery, PipelineRun run, AgentRole role, string? feedback, int attempt, CancellationToken ct)
     {
