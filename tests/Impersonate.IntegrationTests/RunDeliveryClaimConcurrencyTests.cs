@@ -2,6 +2,7 @@ using Impersonate.Domain.Delivery;
 using Impersonate.Domain.Pipelines;
 using Impersonate.Domain.Projects;
 using Impersonate.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -56,7 +57,7 @@ public sealed class RunDeliveryClaimConcurrencyTests
 
         var results = await Task.WhenAll(database.ClaimReviewAsync("review"), database.ClaimFinalPrAsync("final-pr"));
 
-        Assert.Equal([review.Id, finalPr.Id], results.Select(x => x!.Id).Order().ToArray());
+        Assert.Equal(new[] { review.Id, finalPr.Id }.Order(), results.Select(x => x!.Id).Order());
     }
 
     [Fact]
@@ -116,6 +117,11 @@ public sealed class RunDeliveryClaimConcurrencyTests
             var database = new SqlDatabase(connection);
             await using var db = database.Context();
             await db.Database.EnsureCreatedAsync();
+            await using var master = new SqlConnection("Server=(localdb)\\MSSQLLocalDB;Database=master;Trusted_Connection=True;TrustServerCertificate=True");
+            await master.OpenAsync();
+            await using var command = master.CreateCommand();
+            command.CommandText = $"ALTER DATABASE [{name}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE";
+            await command.ExecuteNonQueryAsync();
             return database;
         }
 

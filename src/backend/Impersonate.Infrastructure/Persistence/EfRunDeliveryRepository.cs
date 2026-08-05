@@ -71,7 +71,7 @@ internal sealed class EfRunDeliveryRepository(ImpersonateDbContext db, ILogger<E
                 ;WITH candidate AS
                 (
                     SELECT TOP (1) *
-                    FROM [RunDeliveries] WITH (UPDLOCK, READPAST, ROWLOCK)
+                    FROM [RunDeliveries] WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK, ROWLOCK)
                     WHERE [ClaimId] = @claimId
                        OR ([Status] IN ({string.Join(", ", statuses.Select((_, index) => $"@status{index}"))})
                            AND ([ClaimExpiresAtUtc] IS NULL OR [ClaimExpiresAtUtc] <= @claimedAt))
