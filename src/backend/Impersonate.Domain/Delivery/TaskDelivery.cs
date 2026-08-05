@@ -297,7 +297,8 @@ public sealed class TaskDelivery
     }
     public void RecordRepairCommit(string commitSha, string validationSummaryJson, DateTimeOffset? at = null)
     {
-        Ensure(TaskDeliveryStatus.ChangesRequested);
+        if (Status is not (TaskDeliveryStatus.ChangesRequested or TaskDeliveryStatus.ConflictResolution))
+            throw Invalid("Only a requested change or integration conflict can record a repair commit.");
         CommitSha = PushedCommitSha = PullRequestObservedHeadSha = Required(commitSha, 64);
         ValidationSummaryJson = Required(validationSummaryJson, 16000);
         PushedAtUtc = at ?? DateTimeOffset.UtcNow;
@@ -305,6 +306,12 @@ public sealed class TaskDelivery
     }
     public void ApproveForIntegration(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.DeliveryReview, TaskDeliveryStatus.ApprovedForIntegration, at);
     public void RequestMerge(DateTimeOffset? at = null) => Move(TaskDeliveryStatus.ApprovedForIntegration, TaskDeliveryStatus.MergeRequested, at);
+    public void BeginConflictResolution(DateTimeOffset? at = null)
+    {
+        Ensure(TaskDeliveryStatus.MergeRequested);
+        DeliveryRepairAttemptCount++;
+        Set(TaskDeliveryStatus.ConflictResolution, at);
+    }
     public void MarkMergedIntoRun(DateTimeOffset? at = null)
     {
         if (Status != TaskDeliveryStatus.MergeRequested || PullRequestNumber is null || string.IsNullOrWhiteSpace(PullRequestRepository))

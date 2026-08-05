@@ -28,7 +28,8 @@ Build Git and GitHub delivery as recoverable, focused per-task operations withou
 | 6 | Full Milestone 6 acceptance | Live run `9c3c71f2-caa8-4d85-8d8c-31e2b379e85c` preserved | In progress | Recover Task 1 after the verification fix, then stop at its human merge checkpoint |
 | Redesign 1 | Run delivery aggregate | PR #51 merged as `b344e76`; `RunDelivery`, deterministic run branch identity, additive persistence and safe projection; 247 backend and 20 frontend tests passed | Complete | None |
 | Redesign 2 | Task PRs target run branch | PR #52 merged as `5483994`; remote run-branch preparation, task bases and internal PR bases use the exact persisted run head; 248 backend and 20 frontend tests passed | Complete | None |
-| Redesign 3 | Exact-head task review loop | Branch `feat/task-pr-review-loop`; durable exact-head review attempts, stale-approval supersession, finite repair attempts, same-branch repair and re-review | In progress | Validate and merge focused PR |
+| Redesign 3 | Exact-head task review loop | PR #53 merged as `166334d`; durable exact-head review attempts, stale-approval supersession, finite repair attempts, same-branch repair and re-review | Complete | None |
+| Redesign 4 | Automatic task integration | Branch `feat/automatic-task-integration`; exact-head approval gate, durable merge intent, squash integration, lost-response reconciliation | In progress | Validate and merge focused PR |
 
 ## Superseding delivery invariant
 
@@ -42,8 +43,8 @@ The final aggregate pull request is created only after aggregate validation and 
 |---|---|---|---|
 | 1 | `refactor/run-integration-delivery` | Run aggregate, deterministic identity, persistence, projections | Complete in PR #51 |
 | 2 | `refactor/task-prs-target-run-branch` | Internal task PRs target the run branch | Complete in PR #52 |
-| 3 | `feat/task-pr-review-loop` | Exact-head delivery review and repair | In progress |
-| 4 | `feat/automatic-task-integration` | Automatic internal PR integration | Pending |
+| 3 | `feat/task-pr-review-loop` | Exact-head delivery review and repair | Complete in PR #53 (`166334d`) |
+| 4 | `feat/automatic-task-integration` | Automatic internal PR integration | In progress |
 | 5 | `feat/final-run-review-loop` | Aggregate refresh, validation, repair and review | Pending |
 | 6 | `feat/run-delivery-approval-ui` | Normal final PR and Merge to main | Pending |
 | 7 | `docs/run-integration-delivery-acceptance` | Historical reconciliation and live acceptance | Pending |

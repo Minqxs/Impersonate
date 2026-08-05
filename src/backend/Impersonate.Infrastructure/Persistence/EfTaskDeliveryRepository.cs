@@ -67,7 +67,25 @@ internal sealed class EfTaskDeliveryRepository(ImpersonateDbContext db) : ITaskD
     public async Task<TaskDelivery?> ClaimNextRepairAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
-        var delivery = await db.TaskDeliveries.Where(x => x.Status == TaskDeliveryStatus.ChangesRequested && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
+        var delivery = await db.TaskDeliveries.Where(x => (x.Status == TaskDeliveryStatus.ChangesRequested || x.Status == TaskDeliveryStatus.ConflictResolution) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
+        if (delivery is null)
+        {
+            await transaction.CommitAsync(ct);
+            return null;
+        }
+        delivery.Claim(claimId, owner, expiresAt, claimedAt);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return delivery;
+        }
+        catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return null; }
+    }
+    public async Task<TaskDelivery?> ClaimNextIntegrationAsync(Guid claimId, string owner, DateTimeOffset claimedAt, DateTimeOffset expiresAt, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var delivery = await db.TaskDeliveries.Where(x => (x.Status == TaskDeliveryStatus.ApprovedForIntegration || x.Status == TaskDeliveryStatus.MergeRequested) && (x.ClaimExpiresAtUtc == null || x.ClaimExpiresAtUtc <= claimedAt)).OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.TaskSequence).FirstOrDefaultAsync(ct);
         if (delivery is null)
         {
             await transaction.CommitAsync(ct);

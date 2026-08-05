@@ -101,7 +101,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
                 : string.Equals(pull.State, "closed", StringComparison.OrdinalIgnoreCase) ? PullRequestExternalState.Closed
                 : string.Equals(pull.State, "open", StringComparison.OrdinalIgnoreCase) ? PullRequestExternalState.Open
                 : throw new InvalidOperationException("github_mcp_malformed_response");
-            return DeliveryOperationResult<PullRequestObservation>.Ok(new($"GitHubMCP:{mcp.ServerIdentity}", delivery.PullRequestRepository, pull.Number, pull.HeadBranch, pull.BaseBranch, pull.HeadSha, state, pull.MergeCommitSha));
+            return DeliveryOperationResult<PullRequestObservation>.Ok(new($"GitHubMCP:{mcp.ServerIdentity}", delivery.PullRequestRepository, pull.Number, pull.HeadBranch, pull.BaseBranch, pull.HeadSha, state, pull.MergeCommitSha, pull.HasConflicts));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -144,6 +144,29 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { return DeliveryOperationResult<PullRequestReviewContext>.Fail("github_mcp_failed", "GitHub MCP pull-request review context failed safely."); }
+    }
+
+    public async Task<DeliveryOperationResult<PullRequestObservation>> MergeAsync(TaskDelivery delivery, CancellationToken ct)
+    {
+        if (delivery.Status != TaskDeliveryStatus.MergeRequested || delivery.PullRequestNumber is null || string.IsNullOrWhiteSpace(delivery.PullRequestRepository) || string.IsNullOrWhiteSpace(delivery.CommitSha))
+            return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_merge_state_invalid", "Only an exact-head approved task pull request can be merged.");
+        var parts = delivery.PullRequestRepository.Split('/');
+        if (parts.Length != 2 || !options.AllowedRepositories.Contains(delivery.PullRequestRepository, StringComparer.OrdinalIgnoreCase))
+            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP integration.");
+        try
+        {
+            await mcp.CallToolAsync("merge_pull_request", new
+            {
+                owner = parts[0],
+                repo = parts[1],
+                pullNumber = delivery.PullRequestNumber.Value,
+                merge_method = "squash",
+                sha = delivery.CommitSha
+            }, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { }
+        return await ReadAsync(delivery, ct);
     }
 
     private async Task<PullRequest?> FindAsync(string owner, string repo, string baseBranch, string headBranch, CancellationToken ct)
@@ -205,7 +228,10 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         var @base = value.TryGetProperty("base", out var b) ? b : default;
         if (!DateTimeOffset.TryParse(Text(value, "created_at") ?? Text(value, "createdAt"), out var created))
             throw new InvalidOperationException("github_mcp_malformed_response");
-        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", Text(@base, "sha") ?? Text(value, "base_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"));
+        var mergeable = value.TryGetProperty("mergeable", out var mergeableValue) ? mergeableValue : default;
+        var mergeableState = Text(value, "mergeable_state") ?? Text(value, "mergeableState");
+        var conflicts = mergeable.ValueKind == JsonValueKind.False || string.Equals(mergeableState, "dirty", StringComparison.OrdinalIgnoreCase);
+        return new(number, Text(value, "html_url") ?? Text(value, "htmlUrl") ?? Text(value, "url") ?? "", Text(value, "state") ?? "", value.TryGetProperty("merged", out var merged) && merged.ValueKind == JsonValueKind.True, Text(head, "ref") ?? Text(value, "head_branch") ?? "", Text(@base, "ref") ?? Text(value, "base_branch") ?? "", Text(head, "sha") ?? Text(value, "head_sha") ?? "", Text(@base, "sha") ?? Text(value, "base_sha") ?? "", created, Text(value, "merge_commit_sha") ?? Text(value, "mergeCommitSha"), conflicts);
     }
     private static string? Text(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
     private static long? Long(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : null;
@@ -228,5 +254,5 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
                 return item.GetString() ?? "";
         throw new InvalidOperationException("github_mcp_malformed_response");
     }
-    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, string BaseSha, DateTimeOffset CreatedAt, string? MergeCommitSha);
+    private sealed record PullRequest(long Number, string Url, string State, bool Merged, string HeadBranch, string BaseBranch, string HeadSha, string BaseSha, DateTimeOffset CreatedAt, string? MergeCommitSha, bool HasConflicts);
 }
