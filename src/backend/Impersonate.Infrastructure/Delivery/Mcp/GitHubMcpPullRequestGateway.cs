@@ -26,9 +26,9 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         if (runDelivery is null || runDelivery.Status != RunDeliveryStatus.IntegratingTasks)
             return Fail("run_delivery_branch_not_ready", "Run integration branch is not ready for internal task pull requests.");
         var baseBranch = runDelivery.RunBranchName;
-        var repository = RepositoryIdentity(project.RepositoryUrl);
+        var repository = GitHubRepositoryIdentity.Normalize(project.RepositoryUrl);
         if (repository is null || !string.Equals(repository, delivery.RemoteRepository, StringComparison.OrdinalIgnoreCase) || !options.AllowedRepositories.Contains(repository, StringComparer.OrdinalIgnoreCase))
-            return Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP delivery.");
+            return Fail("github_mcp_repository_not_allowed", $"Repository '{repository ?? "invalid"}' is not allowed. Configured repositories: {string.Join(", ", options.AllowedRepositories)}.");
         var parts = repository.Split('/');
         try
         {
@@ -81,7 +81,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_reconciliation_state_invalid", "An open pull-request identity is required for reconciliation.");
         var parts = delivery.PullRequestRepository.Split('/');
         if (parts.Length != 2 || !options.AllowedRepositories.Contains(delivery.PullRequestRepository, StringComparer.OrdinalIgnoreCase))
-            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP reconciliation.");
+            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", $"Repository '{delivery.PullRequestRepository}' is not allowed. Configured repositories: {string.Join(", ", options.AllowedRepositories)}.");
         try
         {
             var value = await mcp.CallToolAsync("pull_request_read", new
@@ -151,7 +151,7 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
             return DeliveryOperationResult<PullRequestObservation>.Fail("delivery_merge_state_invalid", "Only an exact-head approved task pull request can be merged.");
         var parts = delivery.PullRequestRepository.Split('/');
         if (parts.Length != 2 || !options.AllowedRepositories.Contains(delivery.PullRequestRepository, StringComparer.OrdinalIgnoreCase))
-            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", "Repository is not allowed for GitHub MCP integration.");
+            return DeliveryOperationResult<PullRequestObservation>.Fail("github_mcp_repository_not_allowed", $"Repository '{delivery.PullRequestRepository}' is not allowed. Configured repositories: {string.Join(", ", options.AllowedRepositories)}.");
         try
         {
             var pull = Parse(await mcp.CallToolAsync("pull_request_read", new
@@ -202,9 +202,9 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
         if (delivery.Status != RunDeliveryStatus.ReadyForFinalPullRequest || delivery.FinalReviewDecisionId is null || !string.Equals(delivery.FinalReviewedHeadSha, delivery.RunBranchHeadSha, StringComparison.OrdinalIgnoreCase))
             return DeliveryOperationResult<FinalPullRequestReference>.Fail("final_pull_request_state_invalid", "A current exact-head final review is required.");
         var project = await projects.GetAsync(delivery.ProjectId, ct);
-        var repository = project is null ? null : RepositoryIdentity(project.RepositoryUrl);
+        var repository = project is null ? null : GitHubRepositoryIdentity.Normalize(project.RepositoryUrl);
         if (repository is null || !options.AllowedRepositories.Contains(repository, StringComparer.OrdinalIgnoreCase))
-            return DeliveryOperationResult<FinalPullRequestReference>.Fail("github_mcp_repository_not_allowed", "Repository is not allowed for final delivery.");
+            return DeliveryOperationResult<FinalPullRequestReference>.Fail("github_mcp_repository_not_allowed", $"Repository '{repository ?? "invalid"}' is not allowed. Configured repositories: {string.Join(", ", options.AllowedRepositories)}.");
         var parts = repository.Split('/');
         try
         {
@@ -359,15 +359,6 @@ internal sealed class GitHubMcpPullRequestGateway(IProjectRepository projects, I
     }
     private static string? Text(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
     private static long? Long(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : null;
-    private static string? RepositoryIdentity(string url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
-            return null;
-        var p = uri.AbsolutePath.Trim('/').Split('/');
-        if (p.Length != 2)
-            return null;
-        return $"{p[0]}/{(p[1].EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? p[1][..^4] : p[1])}";
-    }
     private static DeliveryOperationResult<PullRequestReference> Fail(string code, string error) => DeliveryOperationResult<PullRequestReference>.Fail(code, error);
     private static string DiffText(JsonElement value)
     {

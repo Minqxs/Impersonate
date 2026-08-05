@@ -40,6 +40,7 @@ app.MapGet("/", () => Results.Ok(new { Name = "Impersonate API", Status = "Runni
 app.MapHealthChecks("/health");
 app.MapGet("/api/planner/readiness", (IPlannerReadiness readiness) => Results.Ok(readiness.Get()));
 app.MapGet("/api/execution/readiness", async (IExecutionEnvironmentReadinessService readiness, CancellationToken ct) => Results.Ok(await readiness.CheckAsync(ct)));
+app.MapGet("/api/development/preflight", async (string? targetRepository, Impersonate.Infrastructure.Delivery.Mcp.DevelopmentPreflightService preflight, CancellationToken ct) => Results.Ok(await preflight.CheckAsync(targetRepository ?? "Minqxs/TaskIt", ct)));
 var ai = app.MapGroup("/api/ai");
 ai.MapGet("/providers", async (IAiProviderConnectionService service, CancellationToken ct) => Results.Ok(new { supportedProviders = Enum.GetValues<ProviderType>().Where(x => x is ProviderType.Anthropic or ProviderType.OpenAI or ProviderType.GoogleGemini or ProviderType.OpenRouter), connections = await service.ListAsync(ct) }));
 ai.MapGet("/usage/models", async ([Microsoft.AspNetCore.Mvc.FromQuery] int? days, [Microsoft.AspNetCore.Mvc.FromServices] IModelUsageService service, CancellationToken ct) => Results.Ok(new { days = Math.Clamp(days ?? 30, 1, 365), models = await service.GetPlanningUsageAsync(days ?? 30, ct) }));

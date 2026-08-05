@@ -66,7 +66,7 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
     [Fact]
     public async Task Development_ExposesSwaggerUiAndOpenApiDocument()
     {
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => { builder.UseEnvironment("Development"); builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Delivery:GitHubMcp:Enabled"] = "false" })); });
         using var developmentClient = factory.CreateClient();
 
         Assert.Equal(HttpStatusCode.OK, (await developmentClient.GetAsync("/swagger/index.html")).StatusCode);
@@ -76,7 +76,7 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
     [Fact]
     public async Task Development_AllowsViteOriginCorsPreflight()
     {
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => { builder.UseEnvironment("Development"); builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Delivery:GitHubMcp:Enabled"] = "false" })); });
         using var developmentClient = factory.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Options, "/api/projects");
         request.Headers.Add("Origin", "http://localhost:5173");
@@ -107,7 +107,7 @@ public sealed class ApiSmokeTests : IClassFixture<ProjectApiFactory>
     [Fact]
     public async Task PlannerReadiness_IsReadyWhenAllSafeConfigurationIsPresent()
     {
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Agents:Planner:Provider"] = "Anthropic", ["Agents:Planner:Model"] = "configured-test-model", ["ANTHROPIC_API_KEY"] = "not-returned-test-secret" })));
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Agents:Planner:Provider"] = "Anthropic", ["Agents:Planner:Model"] = "configured-test-model", ["ANTHROPIC_API_KEY"] = "not-returned-test-secret", ["Delivery:GitHubMcp:Enabled"] = "false" })));
         using var configuredClient = factory.CreateClient();
         var json = await configuredClient.GetStringAsync("/api/planner/readiness");
         Assert.Contains("Ready", json);

@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Start Impersonate locally", "type": "shell", "command": "pwsh", "args": [ "-NoProfile", "-File", "${workspaceFolder}/scripts/local/start-impersonate.ps1" ], "problemMatcher": [] },
+    { "label": "Stop Impersonate locally", "type": "shell", "command": "pwsh", "args": [ "-NoProfile", "-File", "${workspaceFolder}/scripts/local/stop-impersonate.ps1" ], "problemMatcher": [] },
+    { "label": "Check Impersonate status", "type": "shell", "command": "pwsh", "args": [ "-NoProfile", "-File", "${workspaceFolder}/scripts/local/status-impersonate.ps1" ], "problemMatcher": [] }
+  ]
+}
